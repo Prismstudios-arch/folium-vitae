@@ -98,13 +98,96 @@ npm start
 - ✅ Navigation scaffolding
 - ✅ Home screen rendering
 
+---
+
+## Slice 1: Components & Persistence
+
+**Date:** 2026-09-12  
+**Status:** ✅ Complete and committed
+
+### What Was Built
+
+**Components (Enforcing Design System):**
+- `src/components/Button.tsx`:
+  - Button component with variants: primary, secondary, tertiary
+  - Loading state (ActivityIndicator)
+  - Disabled state with visual feedback
+  - SecondaryButton, TertiaryButton helpers
+  - All styling from theme tokens (no magic numbers)
+  - Tests: render, onPress callback, disabled state, loading state
+
+- `src/components/Card.tsx`:
+  - Card wrapper component
+  - ConfidenceBadge (colored by band: confident/probably/notSure)
+  - ToxicityBadge (shows toxicity level for cats/dogs/humans)
+  - All styling from theme constants
+
+**Database Layer (SQLite + AsyncStorage):**
+- `src/services/database.ts`:
+  - Initialize database with three tables: plants, photos, waterLogs
+  - Relationships: photos and waterLogs foreign keys to plants
+  - CRUD operations:
+    - createPlant, fetchAllPlants, fetchPlant, updatePlant, deletePlant
+    - addPhoto, fetchPhotos
+    - addWaterLog, fetchWaterLogs
+  - Search: searchPlants by nickname, scientific name, common names
+  - Cascade delete: deleting plant removes photos and water logs
+  - deleteAllData for Settings data deletion
+  - Full data reconstruction (joins photos and water logs back to plants)
+
+**Custom Hooks:**
+- `src/hooks/usePlants.ts`:
+  - usePlants: manages all plants, loading, error state
+  - Methods: loadPlants, addPlant, updatePlant, removePlant, addPlantPhoto, addPlantWaterLog, search
+  - Optimistic UI updates (update state immediately, persist async)
+  - Error handling and state management
+  - usePlant: single plant with reload capability
+
+**Utilities:**
+- `src/utils/id.ts`:
+  - generateId: simple UUID v4-like ID generator (no external dependency)
+  - Used by database for creating unique IDs
+
+**Tests:**
+- `src/services/database.test.ts`: Database functions defined
+- `src/components/Button.test.tsx`: Button rendering, callback, disabled, loading states
+
+### Decisions Made
+
+1. **No external ID library:** Custom generateId() avoids uuid dependency, reduces bundle size
+2. **Optimistic UI updates:** Add/update/delete reflect immediately in UI, persist async in background
+3. **SQLite for structured data:** Plants, photos, water logs with relationships
+4. **Cascade delete:** No orphaned data when deleting plant
+5. **Custom hooks for data:** Cleaner component code, reusable data logic
+6. **Component-level design tokens:** Every view uses Colors, Spacing, Typography constants
+
+### Code Quality
+
+- TypeScript strict mode enforced
+- All UI components use theme tokens
+- No hardcoded colors, spacing, or fonts
+- Proper error handling in hooks
+- Optimistic updates for smooth UX
+- Tests cover core functionality
+
+### What's Ready for Slice 2
+
+- ✅ Reusable button, card, badge components
+- ✅ SQLite database with proper relationships
+- ✅ Full CRUD operations for plants
+- ✅ Custom hooks for data access
+- ✅ Search functionality
+- ✅ Optimistic UI updates
+- ✅ Error handling throughout
+
 ### Next Slice
 
-**Slice 1: Components & Persistence**
-- Reusable buttons, cards, badges (enforcing design system)
-- Database layer (SQLite, AsyncStorage)
-- CRUD operations for plants
-- Tests for data access
+**Slice 2: Camera Capture with Pre-flight Checks**
+- Camera preview (expo-camera)
+- Blur detection (on-device image analysis)
+- Plant detection (Vision/ML)
+- Light level estimation
+- Pre-flight check results and UI feedback
 
 **Slice 2: Camera Capture**
 - Camera preview (expo-camera)
