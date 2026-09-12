@@ -481,32 +481,84 @@ npm start
 
 **Total working flow: 4 minutes from home to saved plant!**
 
-### Next Slices
+---
 
-**Slice 5: Onboarding & Settings**
-- Onboarding flow (3 screens)
-- Settings page (units, hemisphere, notifications)
-- Data management (export, delete all)
+## Slice 5: Onboarding & Settings
 
-**Slice 5: Onboarding & Settings**
-- Onboarding flow (3 screens + first scan)
-- Settings page (units, hemisphere, notifications, etc)
-- Data management (export, delete)
+**Date:** 2026-09-12  
+**Status:** ✅ Complete and committed
+
+### What Was Built
+
+**User Preferences Service (src/services/userPreferences.ts):**
+- UserPreferences interface (onboarded, units, hemisphere, toxicity warnings, notifications)
+- Persistent storage in AsyncStorage
+- Methods: getUserPreferences, saveUserPreferences, completeOnboarding, exportUserData, resetAllData
+- Default preferences for new users
+
+**Onboarding Flow (app/onboarding.tsx):**
+- 4-screen sequential experience
+  - Screen 1: Welcome (branding, features, value prop)
+  - Screen 2: The Promise (3 core commitments: never fake confidence, never trap, never bad advice)
+  - Screen 3: Quick Setup (kids/pets toggle for toxicity warnings)
+  - Screen 4: Referral & Complete (optional referral source, camera permission note)
+- Smooth transitions between screens (Reanimated FadeInDown)
+- Saves preferences and redirects to scan on completion
+- Full-screen experience (no dismissal, no skip)
+
+**Settings Screen (app/settings.tsx):**
+- Preferences section: units (metric/imperial), hemisphere (north/south)
+- Safety section: toxicity warning toggle
+- Notifications section: watering reminder toggle
+- Data management: export JSON, delete all data (with confirmation)
+- About section: version info, mission statement
+- Real-time preference persistence
+- Error handling and loading states
+
+**Navigation Gate (app/_layout.tsx):**
+- NavigationLayout component checks onboarding status
+- Routes to /onboarding if not completed
+- Prevents skipping onboarding flow
+- Conditional screen registration
+
+**Home Screen Update (app/index.tsx):**
+- Settings button (⚙️) in top-right corner
+- Easy access to preferences
+- Updated layout for better visual hierarchy
+
+### Decisions Made
+
+1. **4-screen onboarding:** Balances information (promises) with setup (questions) without overwhelming
+2. **Full-screen flow:** No skip/dismiss options, but intentionally brief and focused
+3. **Promise-first design:** Establishes trust before asking for setup preferences
+4. **Referral optional:** Collects marketing data without gatekeeping progress
+5. **AsyncStorage for Phase 1:** Simple, works offline, ready to migrate to server in Phase 2
+6. **Navigation gate:** App-level check prevents accidental access to main features
+
+### Code Quality
+
+- TypeScript strict throughout
+- All UI uses design tokens
+- Proper async/await for storage operations
+- Error handling with user-friendly alerts
+- Confirmation dialogs for destructive actions
+- Loading states visible
+
+### What's Ready for Next Slices
+
+- ✅ User onboarding flow (4 screens, complete)
+- ✅ User preferences persisted and editable
+- ✅ Data export capability
+- ✅ Settings accessible from home
+- ✅ Navigation gated by onboarding status
+- ✅ Ready for Phase 2: server sync, analytics, push notifications
+
+### Next Slice
 
 **Slice 6: Tests & Polish**
-- Full test coverage
-- Accessibility (WCAG)
+- Full unit test coverage
+- Integration tests (navigation, persistence)
+- Accessibility audit (WCAG AA)
 - Performance optimization
-- CI/CD setup
-
-**Slice 2: Camera Capture**
-- Camera preview (expo-camera)
-- Pre-flight checks (blur, plant detection, light)
-- Photo capture with feedback
-
-**Slice 3: Identification**
-- Backend proxy client
-- Kindwise integration
-- Confidence mapping
-
-And so on...
+- CI/CD pipeline setup
+- Documentation & GitHub readme

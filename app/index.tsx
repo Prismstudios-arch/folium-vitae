@@ -7,9 +7,14 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={styles.topBar}>
         <Text style={styles.title}>Verdure</Text>
-        <Text style={styles.subtitle}>Honest plant identification</Text>
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => router.push("/settings")}
+        >
+          <Text style={styles.settingsIcon}>⚙️</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
@@ -33,6 +38,7 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.footer}>
+        <Text style={styles.subtitle}>Honest plant identification</Text>
         <Text style={styles.footerText}>
           Never fake confidence. Always show alternatives.
         </Text>
@@ -48,19 +54,23 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: Spacing.default,
   },
-  header: {
-    paddingVertical: Spacing.spacious,
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: Spacing.default,
+    paddingTop: Spacing.spacious,
   },
   title: {
     fontSize: Typography.displayLarge.fontSize,
     fontWeight: Typography.displayLarge.fontWeight,
     color: Colors.leaf,
-    marginBottom: Spacing.tight,
   },
-  subtitle: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
+  settingsButton: {
+    padding: Spacing.compact,
+  },
+  settingsIcon: {
+    fontSize: 24,
   },
   content: {
     flex: 1,
@@ -103,6 +113,11 @@ const styles = StyleSheet.create({
   footer: {
     paddingVertical: Spacing.loose,
     alignItems: "center",
+  },
+  subtitle: {
+    fontSize: Typography.caption1.fontSize,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.compact,
   },
   footerText: {
     fontSize: Typography.caption2.fontSize,
