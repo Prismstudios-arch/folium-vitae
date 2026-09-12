@@ -180,14 +180,113 @@ npm start
 - ✅ Optimistic UI updates
 - ✅ Error handling throughout
 
+---
+
+## Slice 2: Camera Capture & Pre-flight Checks
+
+**Date:** 2026-09-12  
+**Status:** ✅ Complete and committed
+
+### What Was Built
+
+**Camera Service (src/services/camera.ts):**
+- **useCamera() hook**:
+  - Request camera permission
+  - Manage camera ref (expo-camera)
+  - Toggle torch (flashlight)
+  - Capture photo (quality 0.8, base64 optional)
+  - Returns: cameraRef, hasPermission, requestPermission, toggleTorch, capturePhoto
+
+- **Pre-flight Checks** (on-device, no API calls):
+  - detectBlur(imageUri): Laplacian-based blur detection (heuristic for Phase 1)
+  - detectPlant(imageUri): Plant detection via color/contrast heuristic
+  - estimateLightLevel(): Estimate from image metadata (veryLow/low/medium/bright)
+  - runPreFlightChecks(): Orchestrates all checks, returns PreFlightResult
+
+- **PreFlightResult**:
+  - isBlurry, blurConfidence
+  - hasPlant, plantConfidence
+  - lightLevel (4 levels)
+  - passes: true only if all checks pass
+  - failureReasons: specific, actionable messages (no error codes)
+
+**Scan Screen (app/scan.tsx):**
+- Full camera UI using expo-camera CameraView
+- State machine: idle → capturing → checking → success/failed
+- Visual elements:
+  - Top bar: back button, settings placeholder
+  - Camera preview with corner guide overlays
+  - Center: scanning animation when checking
+  - Status bar: shows failure reasons or helpful text
+  - Bottom: torch toggle, large shutter button, photo library placeholder
+- Controls:
+  - Tap shutter to capture (disabled during capture/checking)
+  - Toggle torch for flashlight
+  - Photo library button (placeholder for Phase 2)
+- Error handling:
+  - Shows specific failure reasons on failure
+  - Retry button to try again
+  - Requests permission if needed
+- Haptic feedback:
+  - Light impact on capture
+  - Success notification on passing pre-flight
+  - Warning on failure
+
+**Result Screen Placeholder (app/result.tsx):**
+- Displays captured photo at top
+- Placeholder for identification results (will be filled by Slice 3)
+- Save and Share buttons
+- Navigation back to home
+- Uses design tokens throughout
+
+**Tests (src/services/camera.test.ts):**
+- Blur detection returns valid result
+- Plant detection returns valid result
+- Light level is one of four valid states
+- Pre-flight checks return complete result object
+- Passes/fails logic works correctly
+- Failure reasons are specific and honest (no apologies)
+- Error handling graceful
+- Honest error messages: specific, actionable, no error codes
+
+### Decisions Made
+
+1. **Heuristic pre-flight (Phase 1):** Simplified blur/plant detection for now. Production would use Vision framework or ML model.
+2. **expo-camera:** Simple, Expo-native, works in Expo Go.
+3. **Optimistic state updates:** UI updates immediately during capture, feedback is instant.
+4. **Corner guides instead of rigid frame:** Suggests framing without being prescriptive.
+5. **Specific failure messages:** "Hold still and try again", not "ERROR_BLUR_DETECTED".
+6. **No API calls before pre-flight:** On-device checks prevent wasting credits on bad photos.
+
+### Code Quality
+
+- TypeScript strict throughout
+- Async/await for all photo operations
+- Proper error handling (fallback to passing checks on errors)
+- Honest, specific error messages
+- Design tokens used everywhere (colors, spacing, typography)
+- Haptic feedback accessible
+- Permissions requested properly
+
+### What's Ready for Slice 3
+
+- ✅ Full camera UI with custom styling
+- ✅ Photo capture working
+- ✅ Pre-flight checks (blur, plant, light)
+- ✅ Honest failure messages
+- ✅ Haptic feedback on capture and results
+- ✅ State machine for capture flow
+- ✅ Result screen skeleton (ready for identification data)
+- ✅ Navigation between screens
+
 ### Next Slice
 
-**Slice 2: Camera Capture with Pre-flight Checks**
-- Camera preview (expo-camera)
-- Blur detection (on-device image analysis)
-- Plant detection (Vision/ML)
-- Light level estimation
-- Pre-flight check results and UI feedback
+**Slice 3: Backend Proxy & Identification**
+- Backend client (axios, async/await)
+- Kindwise integration
+- Confidence mapping (raw score → calibrated band)
+- Quota enforcement (DeviceCheck-like heuristic for Phase 1)
+- API error handling
 
 **Slice 2: Camera Capture**
 - Camera preview (expo-camera)
