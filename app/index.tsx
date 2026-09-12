@@ -24,7 +24,10 @@ export default function HomeScreen() {
           <Text style={styles.buttonText}>Scan a Plant</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.secondaryButton}>
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => router.push("/my-plants")}
+        >
           <Text style={styles.secondaryButtonText}>My Plants</Text>
         </TouchableOpacity>
       </View>
