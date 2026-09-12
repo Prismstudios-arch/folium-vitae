@@ -153,6 +153,42 @@ export class IdentificationService {
   }
 
   /**
+   * Identify plant and consume quota via backend
+   * Phase 2: Integrated with Verdure backend API
+   */
+  async identifyWithBackend(
+    imageBase64: string,
+    imageHash: string,
+    userId: string
+  ): Promise<IdentificationResult> {
+    const { getApiClient } = await import("./apiClient");
+    const api = getApiClient();
+
+    try {
+      // First, verify user has quota
+      const quota = await api.getQuota(userId);
+
+      if (quota.remaining <= 0) {
+        throw createError(VerdureErrorType.QuotaExceeded);
+      }
+
+      // Perform identification
+      const result = await this.identify(imageBase64, imageHash);
+
+      // Consume quota on backend
+      await api.consumeQuota(userId);
+
+      return result;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("QUOTA_EXCEEDED")) {
+        throw createError(VerdureErrorType.QuotaExceeded, error);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
    * Parse Kindwise API response into our format
    */
   private parseKindwiseResponse(response: KindwiseResponse): IdentificationResult {
