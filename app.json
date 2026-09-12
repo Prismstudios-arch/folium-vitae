@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Verdure",
+    "slug": "verdure",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FDFBF8"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTabletMode": true,
+      "bundleIdentifier": "com.verdure.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "We use your camera to identify plants from photos.",
+        "NSPhotoLibraryUsageDescription": "We use your photo library to identify plants.",
+        "NSPhotoLibraryAddOnlyUsageDescription": "We save identified plants to your library.",
+        "NSLocationWhenInUseUsageDescription": "Optional: helps with regional care advice."
+      }
+    },
+    "android": {
+      "package": "com.verdure.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos."
+        }
+      ]
+    ]
+  }
+}
