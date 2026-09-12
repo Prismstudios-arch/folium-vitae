@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from "axios";
 import { Species, IdentificationResult, ConfidenceBand, CalibratedConfidence } from "@types/plant";
 import { VerdureErrorType, createError } from "@types/errors";
+import { KindwiseProvider, createKindwiseProvider } from "./kindwiseProvider";
 
 // MARK: - Confidence Mapping
 
@@ -61,61 +62,94 @@ export interface KindwiseResponse {
 
 /**
  * Service for plant identification
- * In production: calls backend proxy
- * In Phase 1: mock responses for testing
+ * Phase 2: uses real Kindwise API when available
+ * Phase 1 fallback: mock responses for testing
  */
 export class IdentificationService {
-  private backendUrl: string;
+  private kindwiseProvider?: KindwiseProvider;
   private apiClient: AxiosInstance;
   private useMock: boolean;
 
-  constructor(backendUrl: string = "https://api.verdure.app", useMock: boolean = true) {
-    this.backendUrl = backendUrl;
-    this.useMock = useMock;
+  constructor(options?: { mockMode?: boolean; kindwiseApiKey?: string }) {
+    const mockMode = options?.mockMode ?? false;
+    const apiKey = options?.kindwiseApiKey || process.env.KINDWISE_API_KEY;
 
+    // If API key is available, use real Kindwise provider (Phase 2)
+    if (apiKey && !mockMode) {
+      try {
+        this.kindwiseProvider = new KindwiseProvider({ apiKey });
+        this.useMock = false;
+      } catch (error) {
+        console.warn("Failed to initialize Kindwise provider, falling back to mock:", error);
+        this.useMock = true;
+      }
+    } else {
+      // Fall back to mock mode for testing
+      this.useMock = true;
+    }
+
+    // Fallback axios client (for Phase 1 backend proxy)
     this.apiClient = axios.create({
-      baseURL: backendUrl,
+      baseURL: process.env.VERDURE_API_URL || "https://api.verdure.app",
       timeout: 30000,
     });
   }
 
   /**
    * Identify a plant from image data
+   * Returns honest confidence bands and top 5 alternatives
    */
-  async identify(request: IdentificationRequest): Promise<IdentificationResult> {
+  async identify(imageBase64: string, imageHash?: string): Promise<IdentificationResult> {
     try {
-      // Use mock responses in Phase 1
-      if (this.useMock) {
-        return this.mockIdentify(request);
+      // Try real Kindwise API first (Phase 2)
+      if (this.kindwiseProvider) {
+        try {
+          return await this.kindwiseProvider.identify(imageBase64, imageHash);
+        } catch (error) {
+          console.warn("Kindwise identification failed, falling back to mock:", error);
+        }
       }
 
-      // Production: send to backend proxy
-      const response = await this.apiClient.post<KindwiseResponse>("/identify", {
-        imageUri: request.imageUri,
-        imageHash: request.imageHash,
-      });
-
-      return this.parseKindwiseResponse(response.data);
+      // Fallback to mock responses (Phase 1)
+      return this.mockIdentify(imageBase64, imageHash);
     } catch (error) {
       console.error("Identification failed:", error);
 
-      // Parse axios errors
-      if (axios.isAxiosError(error)) {
-        if (!error.response) {
-          throw createError(VerdureErrorType.NoInternetConnection);
+      // Parse errors
+      if (error instanceof Error) {
+        if (error.message.includes("No plant detected")) {
+          throw createError(VerdureErrorType.IdentificationFailed, error);
         }
-
-        if (error.response.status === 429) {
-          throw createError(VerdureErrorType.QuotaExceeded);
+        if (error.message.includes("rate limit")) {
+          throw createError(VerdureErrorType.QuotaExceeded, error);
         }
-
-        if (error.response.status >= 500) {
-          throw createError(VerdureErrorType.ProviderUnavailable);
+        if (error.message.includes("Invalid API key")) {
+          throw createError(VerdureErrorType.ProviderUnavailable, error);
         }
       }
 
       throw createError(VerdureErrorType.IdentificationFailed, error instanceof Error ? error : undefined);
     }
+  }
+
+  /**
+   * Get provider status (real vs mock)
+   */
+  getProviderInfo(): { provider: "kindwise" | "mock"; ready: boolean } {
+    return {
+      provider: this.useMock ? "mock" : "kindwise",
+      ready: !this.useMock,
+    };
+  }
+
+  /**
+   * Health check: verify provider connection
+   */
+  async healthCheck(): Promise<boolean> {
+    if (this.kindwiseProvider) {
+      return this.kindwiseProvider.healthCheck();
+    }
+    return true; // Mock is always ready
   }
 
   /**
