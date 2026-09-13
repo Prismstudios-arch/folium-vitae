@@ -154,8 +154,11 @@ app.use(errorHandler);
 // Server Startup
 // ============================
 
-const server = app.listen(PORT, async () => {
-  logger.info(`Folium Vitae API listening on ${PORT} (${NODE_ENV})`);
+// Bind 0.0.0.0 explicitly. Left to default, Node binds the IPv6 wildcard,
+// which a container platform routing over IPv4 cannot always reach — the
+// process looks healthy in its own logs while the edge returns 502.
+const server = app.listen(Number(PORT), "0.0.0.0", async () => {
+  logger.info(`Folium Vitae API listening on 0.0.0.0:${PORT} (${NODE_ENV})`);
 
   // Prove the database is reachable at boot rather than discovering it on
   // the first user request. A bad DATABASE_URL should be obvious in the
