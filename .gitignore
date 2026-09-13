@@ -45,3 +45,9 @@ Desktop.ini
 # Expo
 .expo/
 dist/
+
+# Benchmark output
+benchmark/results/
+benchmark/photos/**/*.jpg
+benchmark/photos/**/*.jpeg
+benchmark/photos/**/*.png
