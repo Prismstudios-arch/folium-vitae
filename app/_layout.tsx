@@ -69,6 +69,8 @@ function NavigationLayout() {
           <Stack.Screen name="my-plants" options={{ title: "My Plants" }} />
           <Stack.Screen name="plant-detail" options={{ title: "Plant Details" }} />
           <Stack.Screen name="settings" options={{ title: "Settings" }} />
+          <Stack.Screen name="privacy" options={{ title: "Privacy" }} />
+          <Stack.Screen name="terms" options={{ title: "Terms of use" }} />
         </>
       )}
     </Stack>

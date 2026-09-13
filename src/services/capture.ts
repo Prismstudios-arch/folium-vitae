@@ -7,7 +7,16 @@
  */
 
 import * as Crypto from "expo-crypto";
+import * as ImageManipulator from "expo-image-manipulator";
 import { IdentificationImage, PlantOrgan } from "@domain/plant";
+
+/**
+ * Longest edge sent to the provider.
+ *
+ * Providers downscale server-side anyway, so a full-resolution frame buys no
+ * accuracy and costs upload time on a phone connection (SPEC §6).
+ */
+const UPLOAD_MAX_EDGE = 1024;
 
 export interface Capture {
   uri: string;
@@ -33,13 +42,42 @@ export async function hashImage(base64: string): Promise<string> {
 const MAX_HELD = 5;
 const captures = new Map<string, Capture>();
 
+/**
+ * Downscale and re-encode a capture for upload.
+ *
+ * Re-encoding is what strips EXIF. A photo straight off the camera carries
+ * metadata that can include the GPS coordinates where it was taken — which,
+ * for houseplants, is the user's home address. That must not leave the device
+ * (SPEC §6, §10).
+ *
+ * manipulateAsync writes a fresh JPEG from decoded pixels, so no metadata
+ * survives unless explicitly asked for. Nothing here asks for it.
+ */
+export async function prepareForUpload(uri: string): Promise<{ uri: string; base64: string }> {
+  const processed = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ resize: { width: UPLOAD_MAX_EDGE } }],
+    { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+  );
+
+  if (!processed.base64) {
+    throw new Error("Could not prepare the photo for upload");
+  }
+
+  return { uri: processed.uri, base64: processed.base64 };
+}
+
 export async function holdCapture(
   uri: string,
-  base64: string,
+  _rawBase64: string,
   organ?: PlantOrgan
 ): Promise<Capture> {
+  // Deliberately ignores the camera's own base64 and re-encodes instead. The
+  // raw frame is both larger than the provider needs and carries EXIF.
+  const { uri: cleanUri, base64 } = await prepareForUpload(uri);
+
   const hash = await hashImage(base64);
-  const capture: Capture = { uri, base64, hash, organ, takenAt: new Date() };
+  const capture: Capture = { uri: cleanUri, base64, hash, organ, takenAt: new Date() };
 
   captures.set(hash, capture);
 

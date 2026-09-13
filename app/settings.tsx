@@ -8,10 +8,12 @@ import {
   Alert,
   Share,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { Colors, Spacing, Typography } from "@constants/theme";
+import { SUPPORT_EMAIL, MANAGE_SUBSCRIPTION_URL } from "@constants/config";
 import { Button } from "@components/Button";
 import {
   getUserPreferences,
@@ -261,6 +263,71 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Subscription</Text>
+
+        {/* Top-level and deep-linked to Apple's own page, per SPEC §9. Making
+            someone hunt for how to cancel is the dark pattern this product
+            is positioned against. */}
+        <TouchableOpacity
+          style={styles.linkRow}
+          onPress={() => Linking.openURL(MANAGE_SUBSCRIPTION_URL)}
+          accessibilityRole="link"
+        >
+          <Text style={styles.linkLabel}>Manage subscription</Text>
+          <Text style={styles.linkHint}>Opens Apple's subscription settings</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.linkRow}
+          onPress={() =>
+            Alert.alert(
+              "How to cancel",
+              "Tap Manage subscription above. That opens Apple's page, where you " +
+                "pick Sorrel and tap Cancel Subscription.\n\n" +
+                "You keep access until the period you have paid for ends.\n\n" +
+                "Stuck? Email us and we'll walk you through it."
+            )
+          }
+          accessibilityRole="button"
+        >
+          <Text style={styles.linkLabel}>How do I cancel?</Text>
+          <Text style={styles.linkHint}>A straight answer, in two taps</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Legal & support</Text>
+
+        <TouchableOpacity
+          style={styles.linkRow}
+          onPress={() => router.push("/privacy")}
+          accessibilityRole="button"
+        >
+          <Text style={styles.linkLabel}>Privacy</Text>
+          <Text style={styles.linkHint}>What we collect, and what we don't</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.linkRow}
+          onPress={() => router.push("/terms")}
+          accessibilityRole="button"
+        >
+          <Text style={styles.linkLabel}>Terms of use</Text>
+          <Text style={styles.linkHint}>Including what an identification is worth</Text>
+        </TouchableOpacity>
+
+        {/* A real address, not a contact form (SPEC §5). */}
+        <TouchableOpacity
+          style={styles.linkRow}
+          onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
+          accessibilityRole="link"
+        >
+          <Text style={styles.linkLabel}>Contact us</Text>
+          <Text style={styles.linkHint}>{SUPPORT_EMAIL}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>About</Text>
 
         <View style={styles.aboutRow}>
@@ -382,6 +449,20 @@ const styles = StyleSheet.create({
   dataButtonDescription: {
     fontSize: Typography.caption1.fontSize,
     color: Colors.textSecondary,
+  },
+  linkRow: {
+    paddingVertical: Spacing.default,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.glass,
+  },
+  linkLabel: {
+    ...Typography.bodyLarge,
+    color: Colors.textPrimary,
+  },
+  linkHint: {
+    ...Typography.caption2,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   aboutRow: {
     flexDirection: "row",
