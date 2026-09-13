@@ -77,8 +77,19 @@ webhookRoutes.post(
 
     // RevenueCat sends whatever Authorization value you configure. Without
     // this check, anyone who finds the URL can grant themselves premium.
-    if (req.headers.authorization !== expected) {
-      logger.warn("Rejected RevenueCat webhook with bad authorization");
+    //
+    // Trimmed on both sides: a trailing newline pasted into a dashboard env
+    // var is invisible and rejects every delivery, which presents as
+    // purchases silently never granting access.
+    const provided = (req.headers.authorization ?? "").trim();
+
+    if (provided !== expected.trim()) {
+      // Length is safe to log and is usually enough to spot a truncated
+      // paste or an extra character. The values themselves are not logged.
+      logger.warn(
+        `Rejected RevenueCat webhook: authorization mismatch ` +
+          `(received ${provided.length} chars, expected ${expected.trim().length})`
+      );
       throw ApiError.unauthorized("Invalid webhook signature");
     }
 
