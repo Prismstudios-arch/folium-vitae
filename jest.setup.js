@@ -69,8 +69,8 @@ jest.mock("react-native-reanimated", () => ({
   },
 }));
 
-// Suppress PropTypes warnings in tests
-jest.mock("prop-types", () => ({}));
+// prop-types is no longer a dependency: React 19 removed it, so there is
+// nothing left to mock and doing so fails module resolution.
 
 // Add custom matchers
 expect.extend({

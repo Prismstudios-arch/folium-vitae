@@ -7,40 +7,23 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "baseUrl": ".",
+    "types": ["jest"],
     "paths": {
-      "@/*": [
-        "src/*"
-      ],
-      "@components/*": [
-        "src/components/*"
-      ],
-      "@hooks/*": [
-        "src/hooks/*"
-      ],
-      "@domain/*": [
-        "src/domain/*"
-      ],
-      "@utils/*": [
-        "src/utils/*"
-      ],
-      "@services/*": [
-        "src/services/*"
-      ],
-      "@content/*": [
-        "src/content/*"
-      ],
-      "@constants/*": [
-        "src/constants/*"
-      ]
+      "@/*": ["./src/*"],
+      "@components/*": ["./src/components/*"],
+      "@hooks/*": ["./src/hooks/*"],
+      "@domain/*": ["./src/domain/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@services/*": ["./src/services/*"],
+      "@content/*": ["./src/content/*"],
+      "@constants/*": ["./src/constants/*"]
     }
   },
   "include": [
     "src/**/*",
-    "app/**/*"
+    "app/**/*",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "backend"
-  ]
+  "exclude": ["node_modules", "backend"]
 }

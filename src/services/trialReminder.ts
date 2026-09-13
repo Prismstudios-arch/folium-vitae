@@ -64,9 +64,14 @@ export async function scheduleTrialReminder(
       // States the amount, the date, and how to stop it. No urgency framing,
       // no attempt to talk anyone out of cancelling.
       body: `On ${chargeDay} you'll be charged ${input.priceString} per ${input.period}. To cancel, open Settings › Manage subscription.`,
-      data: { type: "trialEnding" },
+      data: { kind: "trialEnding" },
     },
-    trigger: { date: fireAt },
+    // SDK 57 requires the trigger to name its own type; a bare { date } is
+    // no longer enough to disambiguate from the interval and calendar forms.
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: fireAt,
+    },
   });
 
   await AsyncStorage.setItem(SCHEDULED_KEY, id);

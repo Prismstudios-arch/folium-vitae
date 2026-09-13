@@ -62,7 +62,10 @@
           "icon": "./assets/notification-icon.png",
           "color": "#0C2A1F"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-sqlite",
+      "expo-status-bar"
     ],
     "extra": {
       "apiUrl": "https://folium-vitae-production-c68c.up.railway.app",

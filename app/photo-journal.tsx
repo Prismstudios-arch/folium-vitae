@@ -82,7 +82,12 @@ export default function PhotoJournalScreen() {
           "Anything worth remembering about this photo?",
           [
             { text: "Skip", style: "cancel", onPress: () => void savePhoto(image) },
-            { text: "Save", onPress: (caption) => void savePhoto(image, caption) },
+            {
+              text: "Save",
+              // Alert.prompt types the callback loosely; annotated so React
+              // 19's stricter inference does not fall back to any.
+              onPress: (caption?: string) => void savePhoto(image, caption),
+            },
           ],
           "plain-text",
           ""

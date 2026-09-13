@@ -32,7 +32,9 @@ Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
     // Always show notifications even when app is in foreground
     return {
-      shouldShowAlert: true,
+      // shouldShowAlert is deprecated in SDK 57; banner and list replace it.
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
     };
@@ -171,10 +173,11 @@ export class PushNotificationService {
           body: notification.body,
           sound: "default",
           badge: 1,
-          data: notification,
+          data: { ...notification },
         },
         trigger: {
-          seconds: 1, // Send immediately
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: 1,
         },
       });
 
@@ -239,7 +242,8 @@ export class PushNotificationService {
             },
           },
           trigger: {
-            date, // Schedule at specific time
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date,
           },
         });
       }
