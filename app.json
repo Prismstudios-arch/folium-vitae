@@ -15,7 +15,8 @@
       "bundleIdentifier": "com.prismstudios.sorrel",
       "infoPlist": {
         "NSCameraUsageDescription": "Sorrel uses your camera to identify plants from photos.",
-        "NSPhotoLibraryUsageDescription": "Sorrel uses your photo library to identify plants you have already photographed."
+        "NSPhotoLibraryUsageDescription": "Sorrel uses your photo library to identify plants you have already photographed.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

@@ -31,7 +31,9 @@
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID",
+        // ascAppId is deliberately omitted: EAS resolves it from the bundle
+        // identifier. A wrong or placeholder value here fails the submit
+        // after the upload, which is the most annoying place to fail.
         "appleTeamId": "6WD4F935Z4"
       }
     }
