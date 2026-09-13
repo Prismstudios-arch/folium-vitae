@@ -7,9 +7,10 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Alert,
 } from "react-native";
-import { useEffect, useState } from "react";
-import { useRouter } from "expo-router";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
 import { usePlants } from "@hooks/usePlants";
@@ -67,10 +68,36 @@ export default function MyPlantsScreen() {
     setFilteredPlants(result);
   }, [plants, searchQuery, sortBy]);
 
+  // Reload whenever the screen comes back into view. Without this the list
+  // only loads once on mount, so a plant saved from the result screen is
+  // missing here until the app restarts — which reads exactly like the save
+  // having failed.
+  useFocusEffect(
+    useCallback(() => {
+      void loadPlants();
+    }, [loadPlants])
+  );
+
   const handleDelete = (plant: SavedPlant) => {
-    removePlant(plant.id).catch((err) => {
-      console.error("Failed to delete plant:", err);
-    });
+    // This sits on a small button in a grid, where a mis-tap is easy, and it
+    // is not recoverable. Plant detail already confirms; this did not.
+    Alert.alert(
+      "Delete plant",
+      `Remove ${getDisplayName(plant)} from your collection? This also removes its photos and watering history.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            removePlant(plant.id).catch((err) => {
+              console.error("Failed to delete plant:", err);
+              Alert.alert("Couldn't delete", `${getDisplayName(plant)} is still in your collection.`);
+            });
+          },
+        },
+      ]
+    );
   };
 
   const handlePlantPress = (plant: SavedPlant) => {
@@ -177,7 +204,10 @@ function PlantGridItem({ plant, onPress, onDelete }: PlantGridItemProps) {
     <TouchableOpacity style={styles.gridItem} onPress={() => onPress(plant)}>
       {coverPhoto ? (
         <Image
-          source={{ uri: `file://${coverPhoto.imagePath}` }}
+          // imagePath is already a full file:// URI from the camera or the
+          // picker. Prefixing another scheme produced file://file:///… and
+          // every thumbnail silently failed to load.
+          source={{ uri: coverPhoto.imagePath }}
           style={styles.gridImage}
           resizeMode="cover"
         />

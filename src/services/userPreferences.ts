@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { deleteAllData, fetchAllPlants } from "./database";
 
 export interface UserPreferences {
   hasCompletedOnboarding: boolean;
@@ -52,14 +53,21 @@ export async function completeOnboarding(referralSource?: string): Promise<void>
   });
 }
 
+/**
+ * Delete everything held on this device.
+ *
+ * This previously removed only the preferences key and reported success,
+ * leaving every plant, photo and watering log in SQLite untouched — while
+ * the UI told the user their data had been permanently deleted. The privacy
+ * policy makes the same promise, so the claim was false in two places.
+ *
+ * The plants go first: if that fails we throw, and the user is told nothing
+ * was deleted rather than being left with preferences gone and a collection
+ * they were told had been removed.
+ */
 export async function resetAllData(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(PREFS_KEY);
-    // Also would delete database here (Phase 2)
-  } catch (error) {
-    console.error("Failed to reset data:", error);
-    throw error;
-  }
+  await deleteAllData();
+  await AsyncStorage.removeItem(PREFS_KEY);
 }
 
 export async function exportUserData(): Promise<string> {
@@ -70,10 +78,16 @@ export async function exportUserData(): Promise<string> {
   const stored = await AsyncStorage.getItem(PREFS_KEY);
   const preferences: UserPreferences = stored ? JSON.parse(stored) : DEFAULT_PREFERENCES;
 
+  // The collection is the part people actually care about, and it was
+  // missing: this exported settings alone while the privacy policy promised
+  // everything we hold.
+  const plants = await fetchAllPlants();
+
   return JSON.stringify(
     {
-      preferences,
       exportedAt: new Date().toISOString(),
+      preferences,
+      plants,
     },
     null,
     2

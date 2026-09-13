@@ -7,9 +7,17 @@ import {
   exportUserData,
   UserPreferences,
 } from "./userPreferences";
+import { deleteAllData, fetchAllPlants } from "./database";
 
 // Mock AsyncStorage
 jest.mock("@react-native-async-storage/async-storage");
+
+// Export and delete now reach the plant database as well as preferences —
+// the whole point of the fix, since both previously covered only settings.
+jest.mock("./database", () => ({
+  deleteAllData: jest.fn().mockResolvedValue(undefined),
+  fetchAllPlants: jest.fn().mockResolvedValue([]),
+}));
 
 describe("UserPreferences Service", () => {
   beforeEach(() => {
@@ -165,6 +173,46 @@ describe("UserPreferences Service", () => {
       (AsyncStorage.getItem as jest.Mock).mockRejectedValue(new Error("Export failed"));
 
       await expect(exportUserData()).rejects.toThrow("Export failed");
+    });
+  });
+
+  /**
+   * Both of these shipped covering preferences only, while the UI and the
+   * privacy policy promised the whole collection. The claim was the bug, so
+   * these assert against the claim.
+   */
+  describe("covers the plant collection, not just settings", () => {
+    it("deletes plants as well as preferences", async () => {
+      (AsyncStorage.removeItem as jest.Mock).mockResolvedValue(undefined);
+
+      await resetAllData();
+
+      expect(deleteAllData).toHaveBeenCalled();
+      expect(AsyncStorage.removeItem).toHaveBeenCalled();
+    });
+
+    it("does not clear preferences if deleting plants fails", async () => {
+      (deleteAllData as jest.Mock).mockRejectedValueOnce(new Error("db locked"));
+      (AsyncStorage.removeItem as jest.Mock).mockClear();
+
+      await expect(resetAllData()).rejects.toThrow("db locked");
+
+      // Half-deleting is worse than not deleting: the user would be told
+      // everything was removed while their collection remained.
+      expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+    });
+
+    it("includes the collection in an export", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+      (fetchAllPlants as jest.Mock).mockResolvedValueOnce([
+        { id: "p1", scientificName: "Monstera deliciosa" },
+      ]);
+
+      const exported = JSON.parse(await exportUserData());
+
+      expect(exported.plants).toHaveLength(1);
+      expect(exported.plants[0].scientificName).toBe("Monstera deliciosa");
+      expect(exported.preferences).toBeDefined();
     });
   });
 });
