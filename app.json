@@ -76,7 +76,12 @@
     ],
     "extra": {
       "apiUrl": "https://folium-vitae-production-c68c.up.railway.app",
-      "revenueCatPublicKey": "appl_oFUAdIkyOXQLsIBAaZbXKpBTjiq"
-    }
+      "revenueCatPublicKey": "appl_oFUAdIkyOXQLsIBAaZbXKpBTjiq",
+      "router": {},
+      "eas": {
+        "projectId": "7869f0a3-126e-4f69-b3ad-3f4c2df3bdc9"
+      }
+    },
+    "owner": "jonnywilson"
   }
 }
