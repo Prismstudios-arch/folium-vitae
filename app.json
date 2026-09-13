@@ -1,24 +1,21 @@
 {
   "expo": {
-    "name": "Verdure",
-    "slug": "verdure",
+    "name": "Folium Vitae",
+    "slug": "folium-vitae",
+    "scheme": "foliumvitae",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#FDFBF8"
-    },
-    "updates": {
-      "fallbackToCacheTimeout": 0
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTabletMode": true,
-      "bundleIdentifier": "com.verdure.app",
+      "supportsTablet": true,
+      "bundleIdentifier": "com.foliumvitae.app",
       "infoPlist": {
         "NSCameraUsageDescription": "We use your camera to identify plants from photos.",
         "NSPhotoLibraryUsageDescription": "We use your photo library to identify plants.",
@@ -27,7 +24,7 @@
       }
     },
     "android": {
-      "package": "com.verdure.app",
+      "package": "com.foliumvitae.app",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -36,9 +33,10 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro"
     },
     "plugins": [
+      "expo-router",
       [
         "expo-camera",
         {
@@ -51,6 +49,9 @@
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photos."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "verdureApiUrl": "https://folium-vitae-production.up.railway.app"
+    }
   }
 }
