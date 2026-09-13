@@ -32,6 +32,7 @@ import { quotaRoutes } from "./routes/quota";
 import { plantsRoutes } from "./routes/plants";
 import { notificationsRoutes } from "./routes/notifications";
 import { identifyRoutes } from "./routes/identify";
+import { webhookRoutes } from "./routes/webhooks";
 import { isProviderConfigured } from "./services/identifyProvider";
 
 const app: Express = express();
@@ -62,6 +63,11 @@ const limiter = rateLimit({
   message: "Too many requests, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
+  // Webhooks arrive from RevenueCat's own IPs and can burst — a renewal run
+  // covers many users at once. Rate limiting them would drop purchase events
+  // and leave people paying for a plan we never granted. They are
+  // authenticated by a shared secret instead.
+  skip: (req) => req.path.startsWith("/webhooks/"),
 });
 app.use("/api/", limiter);
 
@@ -126,6 +132,7 @@ app.get("/api/status", (_req: Request, res: Response) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/identify", identifyRoutes);
+app.use("/api/webhooks", webhookRoutes);
 app.use("/api/preferences", preferencesRoutes);
 app.use("/api/quota", quotaRoutes);
 app.use("/api/plants", plantsRoutes);

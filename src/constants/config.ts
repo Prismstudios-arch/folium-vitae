@@ -14,11 +14,24 @@ import Constants from "expo-constants";
 
 interface AppExtra {
   apiUrl?: string;
+  revenueCatPublicKey?: string;
 }
 
 const extra = (Constants.expoConfig?.extra ?? {}) as AppExtra;
 
 export const API_URL: string = extra.apiUrl ?? "http://localhost:3000";
+
+/**
+ * RevenueCat's *public* SDK key.
+ *
+ * This one is designed to ship inside the app — it can only read offerings
+ * and start purchases Apple then verifies. It is not the secret key, which
+ * lives on the server and must never appear here.
+ *
+ * Empty until configured, and the paywall says so rather than inventing
+ * prices.
+ */
+export const REVENUECAT_PUBLIC_KEY: string = extra.revenueCatPublicKey ?? "";
 
 /** How long to wait on an identification before giving up. */
 export const IDENTIFY_TIMEOUT_MS = 45_000;
