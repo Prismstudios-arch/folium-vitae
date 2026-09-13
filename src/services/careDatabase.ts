@@ -1,209 +1,233 @@
+/**
+ * Care knowledge lookup.
+ *
+ * Data lives in src/data/careGuides.json rather than in this file, so a wrong
+ * record can be corrected — eventually by a remote delta — without shipping a
+ * new build (SPEC §4).
+ *
+ * The lookup is deliberately forgiving about names. Providers return
+ * "Monstera deliciosa Liebm.", cultivar names in quotes, and current
+ * taxonomy that may differ from the name a record was filed under. An exact
+ * string match finds almost none of those.
+ */
+
 import { CareGuide, LightLevel, WaterFrequency, SoilType, ToxicityLevel } from "@domain/plant";
+import careData from "../data/careGuides.json";
+
+// ---------------------------------------------------------------------------
+// Name normalisation
+// ---------------------------------------------------------------------------
 
 /**
- * Seeded care knowledge database
- * ~50 common houseplants with curated care information
+ * Reduce a botanical name to "genus species".
+ *
+ * Strips the naming authority ("Liebm."), cultivar names ("'Thai
+ * Constellation'"), and infraspecific ranks ("var. borsigiana") — none of
+ * which change the care advice, but all of which break an exact match.
  */
-export const SEEDED_CARE_GUIDES: CareGuide[] = [
-  {
-    id: "monstera-deliciosa",
-    scientificName: "Monstera deliciosa",
-    commonNames: ["Swiss Cheese Plant", "Monstera"],
-    taxonomy: "Family: Araceae, Genus: Monstera",
-    light: {
-      min: LightLevel.Medium,
-      max: LightLevel.BrightIndirect,
-      notes: "Thrives in bright, indirect light",
-    },
-    water: {
-      frequency: WaterFrequency.Moderate,
-      notes: "Water when top inch of soil is dry",
-      seasonalModifier: "Reduce watering in winter",
-    },
-    soil: {
-      type: SoilType.General,
-      drainage: "Well-draining potting mix",
-    },
-    temperature: {
-      minCelsius: 15,
-      maxCelsius: 27,
-    },
-    humidity: {
-      minPercent: 50,
-      maxPercent: 80,
-    },
-    toxicity: {
-      cats: ToxicityLevel.Moderate,
-      dogs: ToxicityLevel.Moderate,
-      humans: ToxicityLevel.Mild,
-      notes: "Contains oxalates; mildly toxic if ingested",
-    },
-    feeding: "Monthly with balanced fertilizer during growing season",
-    repotting: "Every 2 years when root-bound",
-    propagation: "Via stem cuttings in water or soil",
-    commonProblems: ["Brown leaf tips", "Yellow leaves", "Spider mites"],
-    growthHabit: "Climbing vine",
-    matureSize: "Up to 3m indoors",
-    sourceRefs: ["Botanical Garden, 2024", "Plant Care Guide"],
-    reviewedBy: "Botanist, January 2024",
-    lastReviewedAt: new Date("2024-01-15"),
-    confidence: "species",
-  },
-  {
-    id: "pothos",
-    scientificName: "Epipremnum aureum",
-    commonNames: ["Pothos", "Devil's Ivy"],
-    taxonomy: "Family: Araceae, Genus: Epipremnum",
-    light: {
-      min: LightLevel.Low,
-      max: LightLevel.BrightIndirect,
-      notes: "Very tolerant of low light",
-    },
-    water: {
-      frequency: WaterFrequency.Moderate,
-      notes: "Water when soil surface is dry",
-      seasonalModifier: "Less in winter",
-    },
-    soil: {
-      type: SoilType.General,
-      drainage: "Well-draining",
-    },
-    temperature: {
-      minCelsius: 12,
-      maxCelsius: 29,
-    },
-    humidity: {
-      minPercent: 40,
-      maxPercent: 60,
-    },
-    toxicity: {
-      cats: ToxicityLevel.Moderate,
-      dogs: ToxicityLevel.Moderate,
-      humans: ToxicityLevel.Mild,
-    },
-    feeding: "Every 2-3 weeks in growing season",
-    repotting: "Every 1-2 years",
-    propagation: "Very easy from stem cuttings",
-    commonProblems: ["Yellow leaves", "Weak growth in low light"],
-    growthHabit: "Trailing/climbing vine",
-    matureSize: "Very long (up to 10m)",
-    sourceRefs: ["Indoor Plant Care Manual"],
-    reviewedBy: "Plant Expert, February 2024",
-    lastReviewedAt: new Date("2024-02-01"),
-    confidence: "species",
-  },
-  {
-    id: "ficus-elastica",
-    scientificName: "Ficus elastica",
-    commonNames: ["Rubber Plant", "Rubber Fig"],
-    taxonomy: "Family: Moraceae, Genus: Ficus",
-    light: {
-      min: LightLevel.Bright,
-      max: LightLevel.BrightIndirect,
-      notes: "Needs bright light to thrive",
-    },
-    water: {
-      frequency: WaterFrequency.Moderate,
-      notes: "Water when top 2 inches are dry",
-      seasonalModifier: "Minimal in winter",
-    },
-    soil: {
-      type: SoilType.General,
-      drainage: "Well-draining",
-    },
-    temperature: {
-      minCelsius: 13,
-      maxCelsius: 27,
-    },
-    humidity: {
-      minPercent: 50,
-      maxPercent: 70,
-    },
-    toxicity: {
-      cats: ToxicityLevel.Mild,
-      dogs: ToxicityLevel.Mild,
-      humans: ToxicityLevel.Mild,
-    },
-    feeding: "Monthly during growing season",
-    repotting: "Every 1-2 years",
-    propagation: "From cuttings or air layering",
-    commonProblems: ["Dropping leaves", "Spider mites"],
-    growthHabit: "Upright tree-like",
-    matureSize: "1-2m indoors",
-    sourceRefs: ["Tropical Plant Guide"],
-    reviewedBy: "Horticulturist, March 2024",
-    lastReviewedAt: new Date("2024-03-10"),
-    confidence: "species",
-  },
-  {
-    id: "snake-plant",
-    scientificName: "Sansevieria trifasciata",
-    commonNames: ["Snake Plant", "Mother-in-law's Tongue"],
-    taxonomy: "Family: Asparagaceae, Genus: Sansevieria",
-    light: {
-      min: LightLevel.Low,
-      max: LightLevel.BrightDirect,
-      notes: "Extremely tolerant; thrives in any light",
-    },
-    water: {
-      frequency: WaterFrequency.Rarely,
-      notes: "Very drought tolerant; water sparingly",
-      seasonalModifier: "Almost none in winter",
-    },
-    soil: {
-      type: SoilType.CactusSucculent,
-      drainage: "Must have excellent drainage",
-    },
-    temperature: {
-      minCelsius: 12,
-      maxCelsius: 29,
-    },
-    humidity: {
-      minPercent: 20,
-      maxPercent: 60,
-    },
-    toxicity: {
-      cats: ToxicityLevel.Mild,
-      dogs: ToxicityLevel.Mild,
-      humans: ToxicityLevel.Mild,
-    },
-    feeding: "Once in spring only",
-    repotting: "Every 2-3 years",
-    propagation: "Leaf cuttings or division",
-    commonProblems: ["Root rot from overwatering"],
-    growthHabit: "Upright rosette",
-    matureSize: "0.5-1.5m",
-    sourceRefs: ["Low Maintenance Plant Guide"],
-    reviewedBy: "Plant Scientist, January 2024",
-    lastReviewedAt: new Date("2024-01-20"),
-    confidence: "species",
-  },
-];
-
-/**
- * Get care guide by scientific name (exact match)
- */
-export function getCareGuide(scientificName: string): CareGuide | null {
-  return SEEDED_CARE_GUIDES.find((guide) => guide.scientificName === scientificName) || null;
+export function normaliseName(name: string): string {
+  return String(name)
+    .toLowerCase()
+    .replace(/\s*'[^']*'/g, "")
+    .replace(/\s*"[^"]*"/g, "")
+    .replace(/\([^)]*\)/g, "")
+    .replace(/\s*\b(var|subsp|ssp|cv|f)\b\.?\s.*$/, "")
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" ")
+    .trim();
 }
 
+export function genusOf(name: string): string {
+  return normaliseName(name).split(" ")[0] ?? "";
+}
+
+// ---------------------------------------------------------------------------
+// Loading
+// ---------------------------------------------------------------------------
+
+interface RawGuide {
+  id: string;
+  scientificName: string;
+  synonyms: string[];
+  commonNames: string[];
+  family: string;
+  genus: string;
+  confidence: "species" | "genus";
+  light: { min: string; max: string; notes?: string };
+  water: { frequency: string; notes?: string; seasonalModifier?: string };
+  soil: { type: string; notes?: string; drainage?: string };
+  temperature: { minCelsius: number; maxCelsius: number; notes?: string };
+  humidity: { minPercent: number; maxPercent: number; notes?: string };
+  toxicity: { cats: string; dogs: string; humans: string; notes?: string };
+  feeding?: string;
+  repotting?: string;
+  propagation?: string;
+  commonProblems?: string[];
+  growthHabit?: string;
+  matureSize?: string;
+  hardinessZone?: string;
+  sourceRefs: string[];
+  reviewedBy: string | null;
+  lastReviewedAt: string | null;
+}
+
+function toCareGuide(raw: RawGuide): CareGuide {
+  return {
+    id: raw.id,
+    scientificName: raw.scientificName,
+    commonNames: raw.commonNames,
+    taxonomy: `Family: ${raw.family}, Genus: ${raw.genus}`,
+    light: {
+      min: raw.light.min as LightLevel,
+      max: raw.light.max as LightLevel,
+      notes: raw.light.notes,
+    },
+    water: {
+      frequency: raw.water.frequency as WaterFrequency,
+      notes: raw.water.notes,
+      seasonalModifier: raw.water.seasonalModifier,
+    },
+    soil: {
+      type: raw.soil.type as SoilType,
+      notes: raw.soil.notes,
+      drainage: raw.soil.drainage,
+    },
+    temperature: raw.temperature,
+    humidity: raw.humidity,
+    toxicity: {
+      cats: raw.toxicity.cats as ToxicityLevel,
+      dogs: raw.toxicity.dogs as ToxicityLevel,
+      humans: raw.toxicity.humans as ToxicityLevel,
+      notes: raw.toxicity.notes,
+    },
+    feeding: raw.feeding,
+    repotting: raw.repotting,
+    propagation: raw.propagation,
+    commonProblems: raw.commonProblems,
+    growthHabit: raw.growthHabit,
+    matureSize: raw.matureSize,
+    hardinessZone: raw.hardinessZone,
+    sourceRefs: raw.sourceRefs,
+    reviewedBy: raw.reviewedBy ?? undefined,
+    lastReviewedAt: raw.lastReviewedAt ? new Date(raw.lastReviewedAt) : undefined,
+    confidence: raw.confidence,
+  };
+}
+
+const speciesGuides: RawGuide[] = careData.guides as RawGuide[];
+const genusGuides: RawGuide[] = careData.genusFallbacks as RawGuide[];
+
+export const SEEDED_CARE_GUIDES: CareGuide[] = speciesGuides.map(toCareGuide);
+
 /**
- * Get care guide by genus (fallback when species unknown)
+ * Every name a species record answers to — its accepted name plus its
+ * synonyms. Sansevieria trifasciata was reclassified as Dracaena
+ * trifasciata, so a provider on current taxonomy returns a name the record
+ * is not filed under unless synonyms are indexed.
  */
-export function getCareGuideByGenus(genus: string): CareGuide | null {
-  // For Phase 1, return a general guide
-  // Production would have genus-level guides
+const byName = new Map<string, RawGuide>();
+
+for (const guide of speciesGuides) {
+  byName.set(normaliseName(guide.scientificName), guide);
+  for (const synonym of guide.synonyms) {
+    byName.set(normaliseName(synonym), guide);
+  }
+}
+
+const byGenus = new Map<string, RawGuide>();
+
+for (const guide of genusGuides) {
+  byGenus.set(guide.genus.toLowerCase(), guide);
+  for (const synonym of guide.synonyms) {
+    byGenus.set(synonym.toLowerCase(), guide);
+  }
+}
+
+// A species record also serves as a genus answer when no explicit genus
+// record exists — better to say "most Ficus want…" than nothing at all.
+for (const guide of speciesGuides) {
+  const key = guide.genus.toLowerCase();
+  if (!byGenus.has(key)) {
+    byGenus.set(key, guide);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lookup
+// ---------------------------------------------------------------------------
+
+export interface CareLookupResult {
+  guide: CareGuide;
+  /**
+   * "species" — advice for this exact plant.
+   * "genus"   — general advice for the genus. The UI must say so rather than
+   *             implying the notes are species-specific (SPEC §4).
+   */
+  matchedAt: "species" | "genus";
+  /** True when nobody has reviewed this record yet. Surfaced as a caveat. */
+  unreviewed: boolean;
+}
+
+export function lookupCareGuide(scientificName: string): CareLookupResult | null {
+  const normalised = normaliseName(scientificName);
+
+  const exact = byName.get(normalised);
+  if (exact) {
+    return {
+      guide: toCareGuide(exact),
+      matchedAt: "species",
+      unreviewed: !exact.reviewedBy,
+    };
+  }
+
+  const genus = byGenus.get(genusOf(scientificName));
+  if (genus) {
+    return {
+      guide: toCareGuide(genus),
+      matchedAt: "genus",
+      unreviewed: !genus.reviewedBy,
+    };
+  }
+
+  // No record. Returning null is correct: the alternative is inventing care
+  // advice for a plant we know nothing about, which is how people lose
+  // expensive plants (SPEC §4).
   return null;
 }
 
-/**
- * Search care guides by name
- */
+/** Backwards-compatible accessor. Prefer lookupCareGuide for the match level. */
+export function getCareGuide(scientificName: string): CareGuide | null {
+  return lookupCareGuide(scientificName)?.guide ?? null;
+}
+
+export function getCareGuideByGenus(genus: string): CareGuide | null {
+  const guide = byGenus.get(genus.toLowerCase());
+  return guide ? toCareGuide(guide) : null;
+}
+
 export function searchCareGuides(query: string): CareGuide[] {
-  const lowercaseQuery = query.toLowerCase();
-  return SEEDED_CARE_GUIDES.filter(
-    (guide) =>
-      guide.scientificName.toLowerCase().includes(lowercaseQuery) ||
-      guide.commonNames.some((name) => name.toLowerCase().includes(lowercaseQuery))
-  );
+  const needle = query.toLowerCase().trim();
+  if (!needle) return [];
+
+  return speciesGuides
+    .filter(
+      (guide) =>
+        guide.scientificName.toLowerCase().includes(needle) ||
+        guide.commonNames.some((name) => name.toLowerCase().includes(needle)) ||
+        guide.synonyms.some((name) => name.toLowerCase().includes(needle))
+    )
+    .map(toCareGuide);
+}
+
+/** How much of the database is filled in — used by the seeding script. */
+export function careDatabaseStats() {
+  return {
+    species: speciesGuides.length,
+    genera: genusGuides.length,
+    reviewed: speciesGuides.filter((g) => g.reviewedBy).length,
+    withSources: speciesGuides.filter((g) => g.sourceRefs.length > 0).length,
+  };
 }
