@@ -64,10 +64,11 @@ export class PushNotificationService {
       if (token) {
         this.deviceToken = token;
 
-        // Register with backend
-        await this.registerWithBackend(userId, token);
-
-        // Set up notification listener
+        // The device token is held locally only. Registering it server-side
+        // is for push we originate, and that endpoint is not built yet — so
+        // there is deliberately no call here rather than a call to a stub.
+        // Watering reminders do not need it: they are scheduled on-device
+        // and fire offline.
         this.setupNotificationListeners();
 
         // Load saved reminders
@@ -104,21 +105,6 @@ export class PushNotificationService {
     } catch (error) {
       console.error("Failed to get device token:", error);
       return null;
-    }
-  }
-
-  /**
-   * Register device token with backend
-   */
-  private async registerWithBackend(userId: string, deviceToken: string) {
-    try {
-      const api = getApiClient();
-      const platform = Platform.OS as "ios" | "android";
-
-      await api.registerForNotifications(userId, deviceToken, platform);
-    } catch (error) {
-      console.warn("Failed to register device token with backend:", error);
-      // Not critical - app still works without backend registration
     }
   }
 

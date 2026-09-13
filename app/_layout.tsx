@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useEffect, useState } from "react";
 import { Colors } from "@constants/theme";
 import { getUserPreferences } from "@services/userPreferences";
+import { bootstrapSession } from "@services/session";
 
 function NavigationLayout() {
   const [isOnboarded, setIsOnboarded] = useState(false);
@@ -12,24 +13,33 @@ function NavigationLayout() {
   const segments = useSegments();
 
   useEffect(() => {
-    checkOnboarding();
+    void startUp();
   }, []);
 
-  const checkOnboarding = async () => {
-    try {
-      const prefs = await getUserPreferences();
-      setIsOnboarded(prefs.hasCompletedOnboarding);
-      setIsChecking(false);
+  const startUp = async () => {
+    // Sign in and read preferences together — neither depends on the other,
+    // and running them in series would add a network round trip to launch.
+    //
+    // allSettled, not all: a failed sign-in must not stop the app opening.
+    // My Plants, care cards and the journal all read from the local database
+    // and work offline; only identification needs the network (SPEC 7.3).
+    const [prefsResult] = await Promise.allSettled([
+      getUserPreferences(),
+      bootstrapSession(),
+    ]);
 
-      // Route based on onboarding status
-      if (!prefs.hasCompletedOnboarding) {
+    if (prefsResult.status === "fulfilled") {
+      setIsOnboarded(prefsResult.value.hasCompletedOnboarding);
+
+      if (!prefsResult.value.hasCompletedOnboarding) {
         router.replace("/onboarding");
       }
-    } catch (error) {
-      console.error("Failed to check onboarding:", error);
+    } else {
+      console.error("Failed to read preferences:", prefsResult.reason);
       setIsOnboarded(false);
-      setIsChecking(false);
     }
+
+    setIsChecking(false);
   };
 
   if (isChecking) {

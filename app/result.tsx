@@ -5,26 +5,31 @@ import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button, SecondaryButton } from "@components/Button";
 import { ConfidenceBadge } from "@components/Card";
 import { useIdentification } from "@hooks/useIdentification";
+import { getCapture, toIdentificationImage } from "@services/capture";
 import { IdentificationResult, CalibratedConfidence } from "@domain/plant";
 
 export default function ResultScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const imageUri = params.imageUri as string | undefined;
   const imageHash = params.imageHash as string | undefined;
+  const capture = imageHash ? getCapture(imageHash) : undefined;
+  const imageUri = capture?.uri;
 
   const { identify, identifying, result, confidence, error } = useIdentification();
   const [hasIdentified, setHasIdentified] = useState(false);
 
-  // Trigger identification on mount
+  // Identify once on mount. The guard matters because the effect re-runs on
+  // every state change the identify call itself causes.
   useEffect(() => {
-    if (imageUri && !hasIdentified) {
-      identify([{ uri: imageUri }], imageHash ?? imageUri).catch((err) => {
-        console.error("Identification failed:", err);
-      });
-      setHasIdentified(true);
-    }
-  }, [imageUri, imageHash, hasIdentified, identify]);
+    if (!capture || hasIdentified) return;
+
+    setHasIdentified(true);
+
+    identify([toIdentificationImage(capture)], capture.hash).catch(() => {
+      // Already surfaced through the hook's error state; the screen renders
+      // it. Swallowing here only stops an unhandled rejection warning.
+    });
+  }, [capture, hasIdentified, identify]);
 
   const topCandidate = result?.candidates[0];
   const alternatives = result?.candidates.slice(1, 3) || [];
@@ -52,10 +57,18 @@ export default function ResultScreen() {
           // Error state
           <>
             <Text style={styles.title}>Identification failed</Text>
-            <Text style={styles.errorText}>{error.description}</Text>
-            {error.recovery && <Text style={styles.recoveryText}>{error.recovery}</Text>}
+            <Text style={styles.errorText}>{error.message}</Text>
+            {error.retryable && (
+              <Text style={styles.recoveryText}>This one is usually temporary.</Text>
+            )}
 
-            <Button label="Try Again" onPress={() => router.back()} style={styles.marginTop} />
+            {/* Offer a retry only when retrying could plausibly work. A
+                button that cannot succeed is worse than no button. */}
+            <Button
+              label={error.retryable ? "Try again" : "Back to camera"}
+              onPress={() => router.back()}
+              style={styles.marginTop}
+            />
           </>
         ) : result && topCandidate && confidence ? (
           // Success state

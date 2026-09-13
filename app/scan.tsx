@@ -6,6 +6,7 @@ import * as Haptics from "expo-haptics";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
 import { useCamera, runPreFlightChecks, PreFlightResult } from "@services/camera";
+import { holdCapture } from "@services/capture";
 
 type CaptureState = "idle" | "focusing" | "capturing" | "checking" | "failed" | "success";
 
@@ -50,13 +51,14 @@ export default function ScanScreen() {
       setState("success");
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      // Navigate to result screen with photo
+      // Hold the image data here and pass only its hash. Base64 is far too
+      // large for a navigation param, and the hash is what the server uses
+      // as its cache key anyway.
+      const capture = await holdCapture(photo.uri, photo.base64!);
+
       router.push({
         pathname: "/result",
-        params: {
-          imageUri: photo.uri,
-          confidence: "probably", // Placeholder, will be set by identification
-        },
+        params: { imageHash: capture.hash },
       });
     } else {
       setState("failed");

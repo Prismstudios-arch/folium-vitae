@@ -1,32 +1,28 @@
 import { useState, useCallback, useMemo } from "react";
-import {
-  IdentificationService,
-  QuotaManager,
-  calibrateConfidence,
-} from "@services/identification";
+import { IdentificationService } from "@services/identification";
+import { ApiError, QuotaState, getApiClient } from "@services/apiClient";
 import {
   IdentificationImage,
   IdentificationResult,
   CalibratedConfidence,
 } from "@domain/plant";
-import { VerdureError, VerdureErrorType, createError } from "@domain/errors";
 
 /**
- * Hook for plant identification.
- * Owns the identify -> calibrate -> consume-credit sequence and the
- * surrounding UI state.
+ * Identification flow state.
+ *
+ * Quota is read from the server rather than counted locally. A client-side
+ * counter is both defeatable (reinstall, change the clock) and liable to
+ * disagree with the server, which would mean showing someone "4 left" and
+ * then refusing them (SPEC 6).
  */
 export function useIdentification() {
   const [identifying, setIdentifying] = useState(false);
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const [confidence, setConfidence] = useState<CalibratedConfidence | null>(null);
-  const [error, setError] = useState<VerdureError | null>(null);
-  const [quotaRemaining, setQuotaRemaining] = useState(0);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [quota, setQuota] = useState<QuotaState | null>(null);
 
-  // Built once per mount. Constructing these on every render rebuilt the
-  // HTTP client and quota reader on each keystroke.
-  const identificationService = useMemo(() => new IdentificationService(), []);
-  const quotaManager = useMemo(() => new QuotaManager(), []);
+  const service = useMemo(() => new IdentificationService(), []);
 
   const identify = useCallback(
     async (images: IdentificationImage[], imageHash: string) => {
@@ -34,48 +30,41 @@ export function useIdentification() {
       setError(null);
 
       try {
-        const quota = await quotaManager.getQuota();
-        if (quota.remaining <= 0) {
-          throw createError(VerdureErrorType.QuotaExceeded);
+        const outcome = await service.identify({ images, imageHash });
+
+        setResult(outcome.result);
+        setConfidence(outcome.confidence);
+
+        // The server returns the post-scan quota, so there is no second round
+        // trip and no window where the two disagree.
+        if (outcome.quota) {
+          setQuota(outcome.quota);
         }
 
-        const identResult = await identificationService.identify({
-          images,
-          imageHash,
-        });
-
-        const topCandidate = identResult.candidates[0];
-        if (!topCandidate) {
-          throw createError(VerdureErrorType.IdentificationFailed);
-        }
-
-        const calibrated = calibrateConfidence(topCandidate.rawScore);
-
-        setResult(identResult);
-        setConfidence(calibrated);
-
-        // Only charge a credit once we actually have an answer. Charging for
-        // our own failure is exactly the behaviour this product rejects.
-        await quotaManager.consumeCredit();
-        setQuotaRemaining((await quotaManager.getQuota()).remaining);
-
-        return { result: identResult, confidence: calibrated };
+        return outcome;
       } catch (err) {
-        const verdureError = err as VerdureError;
-        setError(verdureError);
-        throw verdureError;
+        const apiError =
+          err instanceof ApiError ? err : new ApiError("Something went wrong.", 0, false);
+        setError(apiError);
+        throw apiError;
       } finally {
         setIdentifying(false);
       }
     },
-    [identificationService, quotaManager]
+    [service]
   );
 
-  const getQuotaInfo = useCallback(async () => {
-    const quota = await quotaManager.getQuota();
-    setQuotaRemaining(quota.remaining);
-    return quota;
-  }, [quotaManager]);
+  const refreshQuota = useCallback(async () => {
+    try {
+      const current = await getApiClient().getQuota();
+      setQuota(current);
+      return current;
+    } catch {
+      // Quota display is not worth surfacing an error for; the scan itself
+      // will report the real state.
+      return null;
+    }
+  }, []);
 
   const reset = useCallback(() => {
     setResult(null);
@@ -88,9 +77,10 @@ export function useIdentification() {
     result,
     confidence,
     error,
-    quotaRemaining,
+    quota,
+    quotaRemaining: quota?.remaining ?? null,
     identify,
-    getQuotaInfo,
+    refreshQuota,
     reset,
   };
 }

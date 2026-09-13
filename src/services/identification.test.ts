@@ -1,5 +1,13 @@
-import { mapConfidenceBand, calibrateConfidence, IdentificationService, QuotaManager } from "./identification";
+import { mapConfidenceBand, calibrateConfidence, IdentificationService } from "./identification";
 import { ConfidenceBand } from "@domain/plant";
+import { getApiClient, ApiError } from "./apiClient";
+
+// The service is a thin layer over our own API by design, so the API client
+// is the seam. Mocking it keeps these tests offline and deterministic.
+jest.mock("./apiClient", () => {
+  const actual = jest.requireActual("./apiClient");
+  return { ...actual, getApiClient: jest.fn() };
+});
 
 describe("Identification Service", () => {
   describe("Confidence Mapping", () => {
@@ -45,60 +53,79 @@ describe("Identification Service", () => {
   });
 
   describe("IdentificationService", () => {
-    it("should be constructable with defaults", () => {
-      const service = new IdentificationService();
-      expect(service).toBeDefined();
+    const mockIdentify = jest.fn();
+
+    beforeEach(() => {
+      mockIdentify.mockReset();
+      (getApiClient as jest.Mock).mockReturnValue({ identify: mockIdentify });
     });
 
-    it("should identify with mock mode", async () => {
-      const service = new IdentificationService({ mockMode: true });
-      const result = await service.identify({
-        images: [{ uri: "mock-image.jpg" }],
-        imageHash: "abc123",
+    it("is constructable", () => {
+      expect(new IdentificationService()).toBeDefined();
+    });
+
+    it("sends the images to our API and calibrates the top candidate", async () => {
+      mockIdentify.mockResolvedValue({
+        candidates: [
+          { scientificName: "Monstera deliciosa", commonNames: ["Swiss cheese plant"], rawScore: 0.91 },
+          { scientificName: "Monstera adansonii", commonNames: ["Swiss cheese vine"], rawScore: 0.04 },
+        ],
+        provider: "kindwise",
+        timestamp: new Date(),
+        cached: false,
       });
 
-      expect(result).toHaveProperty("candidates");
-      expect(result).toHaveProperty("provider");
-      expect(result).toHaveProperty("timestamp");
-      expect(result.candidates.length).toBeGreaterThan(0);
-    });
-
-    it("should return top candidate with high confidence", async () => {
-      const service = new IdentificationService({ mockMode: true });
-      const result = await service.identify({
-        images: [{ uri: "mock-image.jpg" }],
-        imageHash: "mock-image.jpg",
+      const outcome = await new IdentificationService().identify({
+        images: [{ uri: "file://leaf.jpg", base64: "AAAA" }],
+        imageHash: "hash-abc123",
       });
 
-      expect(result.candidates[0]).toHaveProperty("scientificName");
-      expect(result.candidates[0]).toHaveProperty("commonNames");
-      expect(result.candidates[0]).toHaveProperty("rawScore");
-    });
-  });
-
-  describe("Quota Management", () => {
-    it("should have initial quota of 7", async () => {
-      const manager = new QuotaManager();
-      const quota = await manager.getQuota();
-
-      expect(quota.remaining).toBe(7);
-      expect(quota.used).toBe(0);
+      expect(mockIdentify).toHaveBeenCalledWith(
+        [{ uri: "file://leaf.jpg", base64: "AAAA" }],
+        "hash-abc123"
+      );
+      expect(outcome.result.candidates).toHaveLength(2);
+      expect(outcome.confidence.band).toBe(ConfidenceBand.Confident);
+      expect(outcome.confidence.rawScore).toBe(0.91);
     });
 
-    it("should allow scanning when quota available", async () => {
-      const manager = new QuotaManager();
-      const canScan = await manager.canScan();
+    it("reports a cache hit so the UI can say no credit was spent", async () => {
+      mockIdentify.mockResolvedValue({
+        candidates: [{ scientificName: "Ficus elastica", commonNames: ["Rubber plant"], rawScore: 0.8 }],
+        provider: "kindwise",
+        timestamp: new Date(),
+        cached: true,
+      });
 
-      expect(canScan).toBe(true);
+      const outcome = await new IdentificationService().identify({
+        images: [{ uri: "file://x.jpg", base64: "AAAA" }],
+        imageHash: "seen-before",
+      });
+
+      expect(outcome.cached).toBe(true);
     });
 
-    it("should track reset time", async () => {
-      const manager = new QuotaManager();
-      const quota = await manager.getQuota();
+    // The point of the whole product: never invent an answer.
+    it("propagates provider failures instead of fabricating a result", async () => {
+      mockIdentify.mockRejectedValue(new ApiError("Identification is down.", 503, true));
 
-      expect(quota.resetsAt).toBeInstanceOf(Date);
-      // Should reset tomorrow
-      expect(quota.resetsAt > new Date()).toBe(true);
+      await expect(
+        new IdentificationService().identify({
+          images: [{ uri: "file://x.jpg", base64: "AAAA" }],
+          imageHash: "hash-xyz",
+        })
+      ).rejects.toThrow("Identification is down.");
+    });
+
+    it("refuses a request with no image data rather than calling the API", async () => {
+      await expect(
+        new IdentificationService().identify({
+          images: [{ uri: "file://no-data.jpg" }],
+          imageHash: "hash-none",
+        })
+      ).rejects.toThrow();
+
+      expect(mockIdentify).not.toHaveBeenCalled();
     });
   });
 

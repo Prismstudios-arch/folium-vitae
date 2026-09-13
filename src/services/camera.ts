@@ -35,10 +35,19 @@ export function useCamera() {
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
-        base64: false,
+        // The provider downscales anyway and we pay per call by payload, so
+        // there is nothing to gain from shipping a full-resolution frame.
+        quality: 0.7,
+        // Needed for identification: the proxy forwards bytes, not a file
+        // path it has no way to read.
+        base64: true,
         skipProcessing: false,
       });
+
+      if (!photo?.base64) {
+        console.error("Capture returned no image data");
+        return null;
+      }
 
       return photo;
     } catch (error) {

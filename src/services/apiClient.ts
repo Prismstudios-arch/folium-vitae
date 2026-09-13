@@ -1,455 +1,297 @@
 /**
- * API Client
- * Phase 2: Communication with Verdure backend
- * Handles authentication, sync, and data operations
+ * Client for the Folium Vitae API.
+ *
+ * All identification goes through this client to our own server, never
+ * straight to the vision provider — that is what keeps the provider key off
+ * the device (SPEC 6).
  */
 
-import axios, { AxiosInstance } from "axios";
+import axios, { AxiosInstance, AxiosError } from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_URL, DEFAULT_TIMEOUT_MS, IDENTIFY_TIMEOUT_MS } from "@constants/config";
+import { IdentificationImage, IdentificationResult, Species } from "@domain/plant";
 
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  timestamp: string;
-}
+const TOKEN_STORAGE_KEY = "folium_auth_tokens";
 
-export interface AuthToken {
+export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
   userId: string;
 }
 
+export interface PublicUser {
+  id: string;
+  email: string | null;
+  displayName: string;
+  plan: "free" | "pro" | "premium";
+  isAnonymous: boolean;
+}
+
+export interface QuotaState {
+  used: number;
+  limit: number;
+  remaining: number;
+  plan: "free" | "pro" | "premium";
+  resetsAt: string;
+}
+
+export interface IdentifyResponse extends IdentificationResult {
+  cached: boolean;
+  quota?: QuotaState;
+}
+
+/** Error carrying the server's message so the UI can show something true. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryable: boolean
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+function toApiError(error: unknown): ApiError {
+  if (axios.isAxiosError(error)) {
+    const axiosError = error as AxiosError<{ error?: { message?: string } }>;
+    const status = axiosError.response?.status ?? 0;
+    const serverMessage = axiosError.response?.data?.error?.message;
+
+    if (status === 0 || axiosError.code === "ECONNABORTED") {
+      return new ApiError("Can't reach the server. Check your connection.", 0, true);
+    }
+
+    // 5xx and 429 are worth retrying; a 4xx means the request itself is wrong.
+    const retryable = status >= 500 || status === 429;
+
+    return new ApiError(serverMessage ?? "Something went wrong.", status, retryable);
+  }
+
+  return new ApiError("Something went wrong.", 0, false);
+}
+
 export class ApiClient {
   private client: AxiosInstance;
-  private baseUrl: string;
-  private authToken: AuthToken | null = null;
-  private tokenRefreshTimer: NodeJS.Timeout | null = null;
+  private tokens: AuthTokens | null = null;
+  private refreshInFlight: Promise<boolean> | null = null;
 
-  constructor(baseUrl: string = process.env.VERDURE_API_URL || "http://localhost:3000") {
-    this.baseUrl = baseUrl;
-
+  constructor(baseUrl: string = API_URL) {
     this.client = axios.create({
       baseURL: baseUrl,
-      timeout: 30000,
-      headers: {
-        "Content-Type": "application/json",
-      },
+      timeout: DEFAULT_TIMEOUT_MS,
+      headers: { "Content-Type": "application/json" },
     });
 
-    // Add request interceptor for auth
-    this.client.interceptors.request.use(
-      (config) => {
-        if (this.authToken) {
-          config.headers.Authorization = `Bearer ${this.authToken.accessToken}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
+    this.client.interceptors.request.use((config) => {
+      if (this.tokens) {
+        config.headers.Authorization = `Bearer ${this.tokens.accessToken}`;
+      }
+      return config;
+    });
 
-    // Add response interceptor for token refresh
     this.client.interceptors.response.use(
       (response) => response,
-      async (error) => {
-        if (error.response?.status === 401) {
-          // Token expired, try to refresh
-          if (this.authToken) {
-            const refreshed = await this.refreshToken();
-            if (refreshed) {
-              // Retry original request
-              return this.client(error.config);
-            }
+      async (error: AxiosError) => {
+        const original = error.config as (typeof error.config & { _retried?: boolean }) | undefined;
+
+        // Refresh once per request. Without the _retried guard a persistently
+        // rejecting token loops until the stack blows.
+        if (error.response?.status === 401 && original && !original._retried && this.tokens) {
+          original._retried = true;
+
+          if (await this.refreshTokens()) {
+            original.headers = original.headers ?? {};
+            original.headers.Authorization = `Bearer ${this.tokens!.accessToken}`;
+            return this.client(original);
           }
-          // Clear auth if refresh fails
-          this.clearAuth();
+
+          await this.clearTokens();
         }
+
         return Promise.reject(error);
       }
     );
   }
 
-  // MARK: - Authentication
+  // MARK: - Session
 
-  /**
-   * Register a new user
-   */
-  async register(email: string, password: string, displayName: string) {
-    try {
-      const response = await this.client.post<ApiResponse<AuthToken>>("/api/auth/register", {
-        email,
-        password,
-        displayName,
-      });
+  private async storeTokens(tokens: AuthTokens): Promise<void> {
+    this.tokens = tokens;
+    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens));
+  }
 
-      if (response.data.data) {
-        await this.setAuthToken(response.data.data);
-        return response.data.data;
-      }
-
-      throw new Error("Registration failed");
-    } catch (error) {
-      throw this.handleError(error);
-    }
+  private async clearTokens(): Promise<void> {
+    this.tokens = null;
+    await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
   }
 
   /**
-   * Login with email/password
+   * Collapse concurrent refreshes into one. Several requests failing at once
+   * would otherwise each start a refresh, and all but one would be rejected
+   * for reusing a rotated token.
    */
-  async login(email: string, password: string) {
-    try {
-      const response = await this.client.post<ApiResponse<AuthToken>>("/api/auth/login", {
-        email,
-        password,
-      });
+  private async refreshTokens(): Promise<boolean> {
+    if (this.refreshInFlight) return this.refreshInFlight;
 
-      if (response.data.data) {
-        await this.setAuthToken(response.data.data);
-        return response.data.data;
+    this.refreshInFlight = (async () => {
+      try {
+        const { data } = await axios.post<AuthTokens>(
+          `${this.client.defaults.baseURL}/api/auth/refresh`,
+          { refreshToken: this.tokens?.refreshToken }
+        );
+        await this.storeTokens(data);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        this.refreshInFlight = null;
       }
+    })();
 
-      throw new Error("Login failed");
-    } catch (error) {
-      throw this.handleError(error);
+    return this.refreshInFlight;
+  }
+
+  async restoreSession(): Promise<boolean> {
+    try {
+      const stored = await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
+      if (!stored) return false;
+      this.tokens = JSON.parse(stored) as AuthTokens;
+      return true;
+    } catch {
+      return false;
     }
   }
 
-  /**
-   * Login anonymously (device-based)
-   */
-  async loginAnonymous(deviceId: string) {
+  isAuthenticated(): boolean {
+    return this.tokens !== null;
+  }
+
+  getUserId(): string | null {
+    return this.tokens?.userId ?? null;
+  }
+
+  // MARK: - Auth
+
+  /** Device-keyed sign-in. No account, no password, no PII (SPEC 9). */
+  async loginAnonymous(deviceId: string): Promise<PublicUser> {
     try {
-      const response = await this.client.post<ApiResponse<AuthToken>>(
+      const { data } = await this.client.post<AuthTokens & { user: PublicUser }>(
         "/api/auth/login-anonymous",
         { deviceId }
       );
-
-      if (response.data.data) {
-        await this.setAuthToken(response.data.data);
-        return response.data.data;
-      }
-
-      throw new Error("Anonymous login failed");
+      await this.storeTokens(data);
+      return data.user;
     } catch (error) {
-      throw this.handleError(error);
+      throw toApiError(error);
     }
   }
 
-  /**
-   * Refresh access token
-   */
-  private async refreshToken(): Promise<boolean> {
+  async register(email: string, password: string, displayName: string): Promise<PublicUser> {
     try {
-      if (!this.authToken) return false;
+      const { data } = await this.client.post<AuthTokens & { user: PublicUser }>(
+        "/api/auth/register",
+        { email, password, displayName }
+      );
+      await this.storeTokens(data);
+      return data.user;
+    } catch (error) {
+      throw toApiError(error);
+    }
+  }
 
-      const response = await this.client.post<ApiResponse<AuthToken>>(
-        "/api/auth/refresh",
-        { refreshToken: this.authToken.refreshToken }
+  async login(email: string, password: string): Promise<PublicUser> {
+    try {
+      const { data } = await this.client.post<AuthTokens & { user: PublicUser }>(
+        "/api/auth/login",
+        { email, password }
+      );
+      await this.storeTokens(data);
+      return data.user;
+    } catch (error) {
+      throw toApiError(error);
+    }
+  }
+
+  async logout(): Promise<void> {
+    await this.clearTokens();
+  }
+
+  // MARK: - Identification
+
+  /**
+   * Identify a plant via our proxy.
+   *
+   * The server holds the provider key, enforces quota, and answers from cache
+   * when it has seen this image hash before. It returns an error rather than
+   * a fabricated result when the provider is unavailable.
+   */
+  async identify(
+    images: IdentificationImage[],
+    imageHash: string
+  ): Promise<IdentifyResponse> {
+    const payload = images.map((image) => ({
+      base64: image.base64,
+      organ: image.organ,
+    }));
+
+    try {
+      const { data } = await this.client.post<IdentifyResponse>(
+        "/api/identify",
+        { images: payload, imageHash },
+        { timeout: IDENTIFY_TIMEOUT_MS }
       );
 
-      if (response.data.data) {
-        await this.setAuthToken(response.data.data);
-        return true;
-      }
-
-      return false;
+      // Dates cross the wire as strings.
+      return { ...data, timestamp: new Date(data.timestamp) };
     } catch (error) {
-      console.error("Token refresh failed:", error);
-      return false;
+      throw toApiError(error);
     }
   }
 
-  /**
-   * Store auth token and schedule refresh
-   */
-  private async setAuthToken(token: AuthToken) {
-    this.authToken = token;
-    await AsyncStorage.setItem("verdure_auth_token", JSON.stringify(token));
-
-    // Schedule token refresh before expiration
-    if (this.tokenRefreshTimer) {
-      clearTimeout(this.tokenRefreshTimer);
-    }
-
-    const refreshIn = (token.expiresIn - 300) * 1000; // Refresh 5 min before expiry
-    this.tokenRefreshTimer = setTimeout(() => this.refreshToken(), refreshIn);
-  }
-
-  /**
-   * Clear auth token
-   */
-  private async clearAuth() {
-    this.authToken = null;
-    await AsyncStorage.removeItem("verdure_auth_token");
-
-    if (this.tokenRefreshTimer) {
-      clearTimeout(this.tokenRefreshTimer);
-    }
-  }
-
-  // MARK: - Preferences
-
-  /**
-   * Get user preferences from server
-   */
-  async getPreferences(userId: string) {
+  async getIdentificationHistory(): Promise<
+    Array<{ id: string; candidates: Species[]; identified_at: string }>
+  > {
     try {
-      const response = await this.client.get(`/api/preferences/${userId}`);
-      return response.data;
+      const { data } = await this.client.get<{
+        identifications: Array<{ id: string; candidates: Species[]; identified_at: string }>;
+      }>("/api/identify/history");
+      return data.identifications;
     } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  /**
-   * Update user preferences on server
-   */
-  async updatePreferences(userId: string, preferences: any) {
-    try {
-      const response = await this.client.post(`/api/preferences/${userId}`, preferences);
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  /**
-   * Sync preferences (delta sync)
-   */
-  async syncPreferences(userId: string, lastSync?: string) {
-    try {
-      const response = await this.client.get(`/api/preferences/${userId}/sync`, {
-        params: { lastSync },
-      });
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error);
+      throw toApiError(error);
     }
   }
 
   // MARK: - Quota
 
-  /**
-   * Get current quota for user
-   */
-  async getQuota(userId: string) {
+  async getQuota(): Promise<QuotaState> {
+    const userId = this.getUserId();
+    if (!userId) throw new ApiError("Not signed in", 401, false);
+
     try {
-      const response = await this.client.get(`/api/quota/${userId}`);
-      return response.data;
+      const { data } = await this.client.get<QuotaState>(`/api/quota/${userId}`);
+      return data;
     } catch (error) {
-      throw this.handleError(error);
+      throw toApiError(error);
     }
   }
 
-  /**
-   * Consume one scan credit
-   */
-  async consumeQuota(userId: string) {
+  // MARK: - Health
+
+  async isReachable(): Promise<boolean> {
     try {
-      const response = await this.client.post(`/api/quota/${userId}/consume`);
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  /**
-   * Upgrade user plan
-   */
-  async upgradePlan(userId: string, planType: "pro" | "premium", paymentMethodId: string) {
-    try {
-      const response = await this.client.post(`/api/quota/${userId}/upgrade`, {
-        planType,
-        paymentMethodId,
-      });
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  // MARK: - Plants
-
-  /**
-   * Get user's plant collection
-   */
-  async getPlants(userId: string) {
-    try {
-      const response = await this.client.get(`/api/plants/${userId}`);
-      return response.data.plants;
-    } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  /**
-   * Create a new plant
-   */
-  async createPlant(userId: string, plantData: any) {
-    try {
-      const response = await this.client.post(`/api/plants/${userId}`, plantData);
-      return response.data.plant;
-    } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  /**
-   * Upload photo for plant
-   */
-  async uploadPlantPhoto(userId: string, plantId: string, photoData: any) {
-    try {
-      const response = await this.client.post(
-        `/api/plants/${userId}/${plantId}/photos`,
-        photoData
-      );
-      return response.data.photo;
-    } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  /**
-   * Detect disease from plant photo
-   */
-  async detectDisease(userId: string, plantId: string, imageBase64: string) {
-    try {
-      const response = await this.client.post(
-        `/api/plants/${userId}/${plantId}/detect-disease`,
-        { imageBase64 }
-      );
-      return response.data.diagnosis;
-    } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  /**
-   * Create expert escalation ticket
-   */
-  async requestExpertHelp(userId: string, plantId: string, question: string, photoUrl?: string) {
-    try {
-      const response = await this.client.post(
-        `/api/plants/${userId}/${plantId}/expert-escalation`,
-        { question, photoUrl }
-      );
-      return response.data.ticket;
-    } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  // MARK: - Notifications
-
-  /**
-   * Register device for push notifications
-   */
-  async registerForNotifications(userId: string, deviceToken: string, platform: "ios" | "android") {
-    try {
-      const response = await this.client.post("/api/notifications/subscribe", {
-        userId,
-        deviceToken,
-        platform,
-      });
-      return response.data.subscription;
-    } catch (error) {
-      console.warn("Failed to register for notifications:", error);
-      // Don't throw - notifications are optional
-    }
-  }
-
-  /**
-   * Schedule watering reminder for plant
-   */
-  async scheduleWateringReminder(
-    userId: string,
-    plantId: string,
-    frequency: string,
-    nextWateringDate: string
-  ) {
-    try {
-      const response = await this.client.post(
-        "/api/notifications/schedule-watering-reminder",
-        { userId, plantId, frequency, nextWateringDate }
-      );
-      return response.data.reminder;
-    } catch (error) {
-      throw this.handleError(error);
-    }
-  }
-
-  // MARK: - Utilities
-
-  /**
-   * Check if authenticated
-   */
-  isAuthenticated(): boolean {
-    return !!this.authToken;
-  }
-
-  /**
-   * Get current user ID
-   */
-  getCurrentUserId(): string | null {
-    return this.authToken?.userId || null;
-  }
-
-  /**
-   * Restore auth token from storage
-   */
-  async restoreAuth(): Promise<boolean> {
-    try {
-      const stored = await AsyncStorage.getItem("verdure_auth_token");
-      if (stored) {
-        this.authToken = JSON.parse(stored);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error("Failed to restore auth:", error);
+      const { status } = await this.client.get("/health", { timeout: 5000 });
+      return status === 200;
+    } catch {
       return false;
     }
-  }
-
-  /**
-   * Logout and clear auth
-   */
-  async logout() {
-    await this.clearAuth();
-  }
-
-  /**
-   * Handle API errors
-   */
-  private handleError(error: any) {
-    if (axios.isAxiosError(error)) {
-      const status = error.response?.status;
-      const message = error.response?.data?.error || error.message;
-
-      if (status === 401) {
-        return new Error("Unauthorized. Please log in again.");
-      } else if (status === 429) {
-        return new Error("Rate limited. Please wait before trying again.");
-      } else if (status === 404) {
-        return new Error("Resource not found.");
-      } else if (status === 500) {
-        return new Error("Server error. Please try again later.");
-      }
-
-      return new Error(message || "API request failed");
-    }
-
-    return error;
   }
 }
 
-// Singleton instance
-let apiClient: ApiClient | null = null;
+let instance: ApiClient | null = null;
 
 export function getApiClient(): ApiClient {
-  if (!apiClient) {
-    apiClient = new ApiClient();
-  }
-  return apiClient;
+  if (!instance) instance = new ApiClient();
+  return instance;
 }
