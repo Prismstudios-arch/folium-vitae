@@ -41,6 +41,24 @@ export interface IdentifyResponse extends IdentificationResult {
   quota?: QuotaState;
 }
 
+export interface DiseaseFinding {
+  id: string;
+  name: string;
+  /** Raw provider probability, 0-1. */
+  probability: number;
+  description?: string;
+  treatment?: { prevention?: string[]; chemical?: string[]; biological?: string[] };
+}
+
+export interface DiagnosisResponse {
+  isHealthy: boolean;
+  healthyProbability: number;
+  diseases: DiseaseFinding[];
+  provider: string;
+  timestamp: string;
+  cached: boolean;
+}
+
 /** Error carrying the server's message so the UI can show something true. */
 export class ApiError extends Error {
   constructor(
@@ -245,6 +263,31 @@ export class ApiClient {
 
       // Dates cross the wire as strings.
       return { ...data, timestamp: new Date(data.timestamp) };
+    } catch (error) {
+      throw toApiError(error);
+    }
+  }
+
+  /**
+   * Assess a plant's health.
+   *
+   * Premium only — the server enforces that, and returns 403 with a message
+   * the UI shows verbatim rather than inventing its own upsell.
+   */
+  async diagnose(
+    images: IdentificationImage[],
+    imageHash: string,
+    plantId?: string
+  ): Promise<DiagnosisResponse> {
+    const payload = images.map((image) => ({ base64: image.base64 }));
+
+    try {
+      const { data } = await this.client.post<DiagnosisResponse>(
+        "/api/diagnose",
+        { images: payload, imageHash, plantId },
+        { timeout: IDENTIFY_TIMEOUT_MS }
+      );
+      return data;
     } catch (error) {
       throw toApiError(error);
     }

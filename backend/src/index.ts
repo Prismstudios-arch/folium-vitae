@@ -33,6 +33,7 @@ import { plantsRoutes } from "./routes/plants";
 import { notificationsRoutes } from "./routes/notifications";
 import { identifyRoutes } from "./routes/identify";
 import { webhookRoutes } from "./routes/webhooks";
+import { diagnoseRoutes } from "./routes/diagnose";
 import { isProviderConfigured } from "./services/identifyProvider";
 
 const app: Express = express();
@@ -133,6 +134,7 @@ app.get("/api/status", (_req: Request, res: Response) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/identify", identifyRoutes);
 app.use("/api/webhooks", webhookRoutes);
+app.use("/api/diagnose", diagnoseRoutes);
 app.use("/api/preferences", preferencesRoutes);
 app.use("/api/quota", quotaRoutes);
 app.use("/api/plants", plantsRoutes);

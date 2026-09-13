@@ -7,49 +7,59 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
+import { getApiClient, ApiError, DiagnosisResponse } from "@services/apiClient";
+import { holdCapture, toIdentificationImage } from "@services/capture";
 
 export default function DiseaseDetectionScreen() {
   const router = useRouter();
   const { plantId } = useLocalSearchParams();
   const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [diagnosis, setDiagnosis] = useState<{
-    isHealthy: boolean;
-    confidence: number;
-    diseases: Array<{ name: string; severity: "mild" | "moderate" | "severe" }>;
-    recommendations: string[];
-  } | null>(null);
+  const [diagnosis, setDiagnosis] = useState<DiagnosisResponse | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
 
+  /**
+   * Photograph the affected part and have the server assess it.
+   *
+   * There is no local fallback. This previously waited two seconds and
+   * reported "healthy, 95% confident" for any photo at all — which would
+   * tell somebody with a dying plant to stop looking into it.
+   */
   const handleAnalyzePhoto = async () => {
     if (!permission?.granted) {
       await requestPermission();
       return;
     }
 
-    // TODO: Capture photo and send to disease detection API
     setIsAnalyzing(true);
+    setError(null);
 
     try {
-      // Simulate analysis
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.7, base64: true });
 
-      setDiagnosis({
-        isHealthy: true,
-        confidence: 0.95,
-        diseases: [],
-        recommendations: [
-          "Keep soil moist but not waterlogged",
-          "Ensure good air circulation",
-          "Monitor for spider mites regularly",
-        ],
-      });
-    } catch (error) {
-      Alert.alert("Error", "Failed to analyze plant health");
+      if (!photo?.uri) {
+        throw new ApiError("Couldn't take that photo. Try again.", 0, true);
+      }
+
+      // Same pipeline as identification: downscaled and stripped of EXIF
+      // before it leaves the phone.
+      const capture = await holdCapture(photo.uri, photo.base64 ?? "");
+
+      setDiagnosis(
+        await getApiClient().diagnose(
+          [toIdentificationImage(capture)],
+          capture.hash,
+          typeof plantId === "string" ? plantId : undefined
+        )
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err : new ApiError("Something went wrong.", 0, true));
     } finally {
       setIsAnalyzing(false);
     }
@@ -73,106 +83,145 @@ export default function DiseaseDetectionScreen() {
     );
   }
 
+  if (error) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.errorContent}>
+        <Text style={styles.statusEmoji}>🌱</Text>
+        <Text style={styles.statusTitle}>Couldn't check this one</Text>
+        <Text style={styles.errorMessage}>{error.message}</Text>
+
+        <View style={styles.actionsSection}>
+          {/* Only offer a retry when retrying could plausibly work. On a 403
+              the plan is the problem, and the button would just fail again. */}
+          {error.retryable ? (
+            <Button label="Try again" onPress={() => setError(null)} />
+          ) : error.status === 403 ? (
+            <Button label="See Premium" onPress={() => router.push("/subscription")} />
+          ) : (
+            <Button label="Back" onPress={() => router.back()} />
+          )}
+        </View>
+      </ScrollView>
+    );
+  }
+
   if (diagnosis) {
+    const confidence = diagnosis.isHealthy
+      ? diagnosis.healthyProbability
+      : 1 - diagnosis.healthyProbability;
+
     return (
       <ScrollView style={styles.container}>
         <View style={styles.statusContainer}>
           <Text style={styles.statusEmoji}>{diagnosis.isHealthy ? "✅" : "⚠️"}</Text>
           <Text style={styles.statusTitle}>
-            {diagnosis.isHealthy ? "Plant is Healthy" : "Plant Needs Attention"}
+            {diagnosis.isHealthy ? "Looks healthy" : "Something's wrong"}
           </Text>
           <Text style={styles.confidence}>
-            Confidence: {Math.round(diagnosis.confidence * 100)}%
+            {Math.round(confidence * 100)}% confident
+            {diagnosis.cached ? " · from an earlier check" : ""}
           </Text>
         </View>
 
         {diagnosis.diseases.length > 0 && (
           <View style={styles.diseasesSection}>
-            <Text style={styles.sectionTitle}>Issues Detected</Text>
-            {diagnosis.diseases.map((disease, idx) => (
-              <View key={idx} style={styles.diseaseItem}>
-                <Text style={styles.diseaseName}>{disease.name}</Text>
-                <Text style={[styles.severity, { color: getSeverityColor(disease.severity) }]}>
-                  {disease.severity.toUpperCase()}
-                </Text>
+            <Text style={styles.sectionTitle}>Most likely causes</Text>
+
+            {/* Ranked with likelihoods rather than asserting one answer. A
+                yellow leaf is genuinely ambiguous (SPEC §3.4). */}
+            {diagnosis.diseases.map((disease) => (
+              <View key={disease.id} style={styles.diseaseItem}>
+                <View style={styles.diseaseHeader}>
+                  <Text style={styles.diseaseName}>{disease.name}</Text>
+                  <Text style={styles.diseaseLikelihood}>
+                    {Math.round(disease.probability * 100)}%
+                  </Text>
+                </View>
+
+                {disease.description ? (
+                  <Text style={styles.diseaseDescription}>{disease.description}</Text>
+                ) : null}
+
+                {disease.treatment?.prevention?.length ? (
+                  <View style={styles.treatmentBlock}>
+                    <Text style={styles.treatmentLabel}>What to do</Text>
+                    {disease.treatment.prevention.map((step, index) => (
+                      <View key={index} style={styles.recommendationItem}>
+                        <Text style={styles.bullet}>•</Text>
+                        <Text style={styles.recommendationText}>{step}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </View>
             ))}
           </View>
         )}
 
-        <View style={styles.recommendationsSection}>
-          <Text style={styles.sectionTitle}>Care Recommendations</Text>
-          {diagnosis.recommendations.map((rec, idx) => (
-            <View key={idx} style={styles.recommendationItem}>
-              <Text style={styles.bullet}>•</Text>
-              <Text style={styles.recommendationText}>{rec}</Text>
-            </View>
-          ))}
+        {/* SPEC §10: guidance, not a pathology lab, and never phrased as
+            medical advice. */}
+        <View style={styles.disclaimer}>
+          <Text style={styles.disclaimerText}>
+            This is guidance, not a plant pathology lab. If several causes look
+            similar, change one thing at a time and give it a week before judging.
+          </Text>
         </View>
 
         <View style={styles.actionsSection}>
-          <Button
-            label="Ask an Expert"
-            onPress={handleRequestExpertHelp}
-          />
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={() => setDiagnosis(null)}
-          >
-            <Text style={styles.retryText}>Analyze Again</Text>
+          <Button label="Check again" onPress={() => setDiagnosis(null)} />
+          <TouchableOpacity style={styles.retryButton} onPress={handleRequestExpertHelp}>
+            <Text style={styles.retryText}>Ask a human</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
     );
   }
 
+  // Permission has to be granted before the camera can mount at all.
+  if (!permission?.granted) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Check plant health</Text>
+          <Text style={styles.subtitle}>Photograph the part that looks wrong</Text>
+        </View>
+
+        <View style={styles.content}>
+          <View style={styles.iconContainer}>
+            <Text style={styles.icon}>🔍</Text>
+          </View>
+          <Text style={styles.description}>
+            Sorrel needs your camera to look at the affected leaves.
+          </Text>
+        </View>
+
+        <View style={styles.footer}>
+          <Button label="Enable camera" onPress={() => requestPermission()} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Disease Detection</Text>
-        <Text style={styles.subtitle}>Check your plant's health</Text>
-      </View>
+      {/* The camera has to be mounted for a capture to be possible. Without
+          this the ref stays null and every analysis fails silently. */}
+      <CameraView ref={cameraRef} style={styles.camera} facing="back" />
 
-      <View style={styles.content}>
-        <View style={styles.iconContainer}>
-          <Text style={styles.icon}>🔍</Text>
-        </View>
-
-        <Text style={styles.description}>
-          Take a clear photo of your plant's leaves to detect diseases, pests, and health issues.
-        </Text>
-
-        <View style={styles.tipsSection}>
-          <Text style={styles.tipsTitle}>📸 Photography Tips</Text>
-          <Text style={styles.tip}>• Photograph affected areas clearly</Text>
-          <Text style={styles.tip}>• Ensure good lighting</Text>
-          <Text style={styles.tip}>• Focus on leaves or stems with problems</Text>
-          <Text style={styles.tip}>• Avoid shadows and reflections</Text>
-        </View>
+      <View style={styles.tipsOverlay}>
+        <Text style={styles.tipsTitle}>Get close to the problem</Text>
+        <Text style={styles.tip}>• Fill the frame with the affected leaf</Text>
+        <Text style={styles.tip}>• Good light, no harsh shadows</Text>
+        <Text style={styles.tip}>• Include the underside if you see pests</Text>
       </View>
 
       <View style={styles.footer}>
-        <Button
-          label="Take Photo"
-          onPress={handleAnalyzePhoto}
-        />
+        <Button label="Take photo" onPress={handleAnalyzePhoto} />
       </View>
     </View>
   );
 }
 
-function getSeverityColor(severity: string): string {
-  switch (severity) {
-    case "severe":
-      return Colors.confident; // Use as error color (red)
-    case "moderate":
-      return Colors.probably; // Warning (yellow)
-    case "mild":
-      return Colors.notSure; // Info (blue)
-    default:
-      return Colors.textSecondary;
-  }
-}
 
 const styles = StyleSheet.create({
   container: {
@@ -267,11 +316,68 @@ const styles = StyleSheet.create({
     fontSize: Typography.body.fontSize,
     color: Colors.textSecondary,
   },
+  camera: {
+    flex: 1,
+  },
+  tipsOverlay: {
+    position: "absolute",
+    top: Spacing.extra,
+    left: Spacing.default,
+    right: Spacing.default,
+    backgroundColor: "rgba(12, 42, 31, 0.78)",
+    borderRadius: 10,
+    padding: Spacing.default,
+  },
+  errorContent: {
+    padding: Spacing.loose,
+    paddingTop: Spacing.extra,
+    alignItems: "center",
+  },
+  errorMessage: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    marginTop: Spacing.tight,
+  },
   diseasesSection: {
     paddingHorizontal: Spacing.default,
     paddingVertical: Spacing.loose,
     borderBottomWidth: 1,
     borderBottomColor: Colors.glass,
+  },
+  diseaseHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+  },
+  diseaseLikelihood: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    fontVariant: ["tabular-nums"],
+  },
+  diseaseDescription: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    marginTop: Spacing.compact,
+  },
+  treatmentBlock: {
+    marginTop: Spacing.default,
+  },
+  treatmentLabel: {
+    ...Typography.caption1,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.compact,
+  },
+  disclaimer: {
+    marginHorizontal: Spacing.default,
+    marginTop: Spacing.loose,
+    padding: Spacing.default,
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+  },
+  disclaimerText: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
   },
   sectionTitle: {
     fontSize: Typography.subheadline.fontSize,

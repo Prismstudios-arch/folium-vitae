@@ -167,3 +167,114 @@ export async function identify(
     feedbackToken: response.data.access_token,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Health assessment
+// ---------------------------------------------------------------------------
+
+export interface DiseaseFinding {
+  id: string;
+  name: string;
+  /** Provider's raw probability. Not calibrated; the client bands it. */
+  probability: number;
+  description?: string;
+  treatment?: { prevention?: string[]; chemical?: string[]; biological?: string[] };
+}
+
+export interface HealthAssessment {
+  isHealthy: boolean;
+  /** Confidence that the plant is healthy, 0-1. */
+  healthyProbability: number;
+  diseases: DiseaseFinding[];
+  provider: string;
+  timestamp: string;
+}
+
+interface KindwiseHealthResponse {
+  result?: {
+    is_healthy?: { binary?: boolean; probability?: number };
+    disease?: {
+      suggestions?: Array<{
+        id?: string;
+        name: string;
+        probability: number;
+        details?: {
+          description?: string;
+          treatment?: { prevention?: string[]; chemical?: string[]; biological?: string[] };
+        };
+      }>;
+    };
+  };
+}
+
+const MAX_DISEASES = 4;
+
+/**
+ * Assess plant health from photos.
+ *
+ * Throws when the provider is unavailable rather than returning a healthy
+ * verdict. Telling somebody their sick plant is fine is worse than telling
+ * them we could not look — they would stop investigating.
+ */
+export async function assessHealth(imagesBase64: string[]): Promise<HealthAssessment> {
+  const apiKey = process.env.KINDWISE_API_KEY;
+
+  if (!apiKey) {
+    throw ApiError.serviceUnavailable("Health assessment is not configured on this server.");
+  }
+
+  if (imagesBase64.length === 0) {
+    throw ApiError.badRequest("At least one image is required");
+  }
+
+  let response;
+
+  try {
+    response = await getClient().post<KindwiseHealthResponse>(
+      "/health_assessment",
+      { images: imagesBase64 },
+      {
+        params: { details: "description,treatment" },
+        headers: { "Api-Key": apiKey },
+      }
+    );
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+
+      if (status === 401 || status === 403) {
+        logger.error("Kindwise rejected our key on health assessment");
+        throw ApiError.serviceUnavailable("Health checks are temporarily unavailable.");
+      }
+      if (status === 429) {
+        throw ApiError.serviceUnavailable("Health checks are busy. Try again shortly.");
+      }
+    }
+
+    logger.error("Health assessment failed:", error);
+    throw ApiError.serviceUnavailable("Couldn't check this plant's health. Try again.");
+  }
+
+  const result = response.data.result;
+  const healthyProbability = result?.is_healthy?.probability ?? 0;
+
+  const diseases = (result?.disease?.suggestions ?? [])
+    .slice(0, MAX_DISEASES)
+    .map((suggestion) => ({
+      id: suggestion.id ?? suggestion.name.toLowerCase().replace(/\s+/g, "_"),
+      name: suggestion.name,
+      probability: suggestion.probability,
+      description: suggestion.details?.description,
+      treatment: suggestion.details?.treatment,
+    }));
+
+  return {
+    // Trust the provider's own binary verdict rather than re-deriving one
+    // from a threshold we have not calibrated (SPEC §3.3).
+    isHealthy: result?.is_healthy?.binary ?? false,
+    healthyProbability,
+    diseases,
+    provider: "kindwise",
+    timestamp: new Date().toISOString(),
+  };
+}
