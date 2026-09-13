@@ -8,7 +8,7 @@
 
 import bcrypt from "bcryptjs";
 import jwt, { SignOptions } from "jsonwebtoken";
-import { VerdureError } from "../middleware/errorHandler";
+import { ApiError } from "../middleware/errorHandler";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_EXPIRY = process.env.JWT_EXPIRY || "1h";
@@ -76,13 +76,13 @@ export function verifyToken(token: string, expected: TokenType): TokenPayload {
     decoded = jwt.verify(token, SECRET) as TokenPayload;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
-      throw VerdureError.unauthorized("Token expired");
+      throw ApiError.unauthorized("Token expired");
     }
-    throw VerdureError.unauthorized("Invalid token");
+    throw ApiError.unauthorized("Invalid token");
   }
 
   if (decoded.type !== expected) {
-    throw VerdureError.unauthorized(`Expected a ${expected} token`);
+    throw ApiError.unauthorized(`Expected a ${expected} token`);
   }
 
   return decoded;

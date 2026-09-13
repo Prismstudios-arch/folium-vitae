@@ -85,7 +85,7 @@ export default function SettingsScreen() {
       const data = await exportUserData();
       await Share.share({
         message: data,
-        title: "Verdure Data Export",
+        title: "Sorrel Data Export",
       });
     } catch (error) {
       Alert.alert("Error", "Failed to export data");
@@ -274,7 +274,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={styles.aboutText}>
-          Verdure is built with honesty in mind. We never fake confidence, never trap you
+          Sorrel is built with honesty in mind. We never fake confidence, never trap you
           in subscriptions, and never give you bad advice.
         </Text>
 

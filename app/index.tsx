@@ -8,7 +8,7 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.topBar}>
-        <Text style={styles.title}>Verdure</Text>
+        <Text style={styles.title}>Sorrel</Text>
         <TouchableOpacity
           style={styles.settingsButton}
           onPress={() => router.push("/settings")}

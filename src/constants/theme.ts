@@ -1,5 +1,5 @@
 /**
- * Verdure Design System
+ * Sorrel Design System
  * Color palette, spacing, typography, motion
  * Matches DESIGN.md exactly
  */

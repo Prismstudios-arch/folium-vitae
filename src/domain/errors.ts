@@ -1,9 +1,9 @@
 /**
- * Domain errors for Verdure
+ * Domain errors for Sorrel
  * Honest, specific, actionable error messages
  */
 
-export enum VerdureErrorType {
+export enum SorrelErrorType {
   // Identification
   IdentificationFailed = "IDENTIFICATION_FAILED",
   ProviderUnavailable = "PROVIDER_UNAVAILABLE",
@@ -35,8 +35,8 @@ export enum VerdureErrorType {
   Unknown = "UNKNOWN",
 }
 
-export interface VerdureError {
-  type: VerdureErrorType;
+export interface SorrelError {
+  type: SorrelErrorType;
   message: string;
   description: string; // User-facing message (honest, specific, actionable)
   recovery?: string; // What to do next
@@ -44,90 +44,90 @@ export interface VerdureError {
 }
 
 export function createError(
-  type: VerdureErrorType,
+  type: SorrelErrorType,
   originalError?: Error
-): VerdureError {
-  const errorMessages: Record<VerdureErrorType, { description: string; recovery?: string }> = {
-    [VerdureErrorType.IdentificationFailed]: {
+): SorrelError {
+  const errorMessages: Record<SorrelErrorType, { description: string; recovery?: string }> = {
+    [SorrelErrorType.IdentificationFailed]: {
       description: "Couldn't identify this plant",
       recovery: "Try a different angle or better lighting",
     },
-    [VerdureErrorType.ProviderUnavailable]: {
+    [SorrelErrorType.ProviderUnavailable]: {
       description: "The identification service is temporarily unavailable",
       recovery: "Check your internet connection and try again",
     },
-    [VerdureErrorType.NoInternetConnection]: {
+    [SorrelErrorType.NoInternetConnection]: {
       description: "No internet connection",
       recovery: "Connect to WiFi or mobile data and try again",
     },
-    [VerdureErrorType.QuotaExceeded]: {
+    [SorrelErrorType.QuotaExceeded]: {
       description: "You've reached your daily scan limit",
       recovery: "Your limit resets at midnight",
     },
 
-    [VerdureErrorType.CameraAccessDenied]: {
+    [SorrelErrorType.CameraAccessDenied]: {
       description: "Camera access was denied",
       recovery: "Enable camera access in Settings",
     },
-    [VerdureErrorType.CameraNotAvailable]: {
+    [SorrelErrorType.CameraNotAvailable]: {
       description: "Camera is not available on this device",
       recovery: "This app requires a camera",
     },
-    [VerdureErrorType.CaptureSessionFailed]: {
+    [SorrelErrorType.CaptureSessionFailed]: {
       description: "Failed to start camera",
       recovery: "Try restarting the app",
     },
-    [VerdureErrorType.PhotoProcessingFailed]: {
+    [SorrelErrorType.PhotoProcessingFailed]: {
       description: "Couldn't process the photo",
       recovery: "Try a different photo",
     },
 
-    [VerdureErrorType.ImageBlurred]: {
+    [SorrelErrorType.ImageBlurred]: {
       description: "That came out blurry — hold still and try again",
       recovery: "Use both hands, rest your elbows",
     },
-    [VerdureErrorType.NoPlantDetected]: {
+    [SorrelErrorType.NoPlantDetected]: {
       description: "Point it at a plant",
       recovery: "Make sure the plant is in frame and well-lit",
     },
-    [VerdureErrorType.ImageTooDark]: {
+    [SorrelErrorType.ImageTooDark]: {
       description: "That's too dark — needs a bit more light",
       recovery: "Move to a brighter spot or use the flashlight",
     },
-    [VerdureErrorType.ImageTooSmall]: {
+    [SorrelErrorType.ImageTooSmall]: {
       description: "Photo is too small — move closer",
       recovery: "The plant should fill most of the frame",
     },
 
-    [VerdureErrorType.DatabaseError]: {
+    [SorrelErrorType.DatabaseError]: {
       description: "Database error",
       recovery: "Try restarting the app",
     },
-    [VerdureErrorType.CorruptedData]: {
+    [SorrelErrorType.CorruptedData]: {
       description: "Some data was corrupted",
       recovery: "Your data has been restored",
     },
 
-    [VerdureErrorType.InvalidDeviceToken]: {
+    [SorrelErrorType.InvalidDeviceToken]: {
       description: "Device verification failed",
       recovery: "Try restarting the app",
     },
-    [VerdureErrorType.ApiKeyMissing]: {
+    [SorrelErrorType.ApiKeyMissing]: {
       description: "Configuration error",
       recovery: "This is a technical issue; please contact support",
     },
-    [VerdureErrorType.UnauthorizedRequest]: {
+    [SorrelErrorType.UnauthorizedRequest]: {
       description: "Request was not authorized",
       recovery: "Try restarting the app",
     },
 
-    [VerdureErrorType.Unknown]: {
+    [SorrelErrorType.Unknown]: {
       description: "Something went wrong",
       recovery: "Try again",
     },
   };
 
-  const template = errorMessages[type] || errorMessages[VerdureErrorType.Unknown];
+  const template = errorMessages[type] || errorMessages[SorrelErrorType.Unknown];
 
   return {
     type,
@@ -139,10 +139,10 @@ export function createError(
 }
 
 // Helper to check if error is recoverable
-export function isRecoverable(error: VerdureError): boolean {
+export function isRecoverable(error: SorrelError): boolean {
   const nonRecoverable = [
-    VerdureErrorType.CameraNotAvailable,
-    VerdureErrorType.ApiKeyMissing,
+    SorrelErrorType.CameraNotAvailable,
+    SorrelErrorType.ApiKeyMissing,
   ];
   return !nonRecoverable.includes(error.type);
 }

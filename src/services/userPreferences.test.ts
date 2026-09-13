@@ -122,7 +122,7 @@ describe("UserPreferences Service", () => {
 
       await resetAllData();
 
-      expect(AsyncStorage.removeItem).toHaveBeenCalledWith("verdure_user_preferences");
+      expect(AsyncStorage.removeItem).toHaveBeenCalledWith("sorrel_user_preferences");
     });
 
     it("should handle removal errors", async () => {

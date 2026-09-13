@@ -1,7 +1,7 @@
 {
-  "name": "verdure-backend",
+  "name": "sorrel-backend",
   "version": "1.0.0",
-  "description": "Verdure backend API for Phase 2+",
+  "description": "Sorrel backend API",
   "main": "src/index.ts",
   "scripts": {
     "dev": "ts-node src/index.ts",

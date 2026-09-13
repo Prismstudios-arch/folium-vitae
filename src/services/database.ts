@@ -3,8 +3,8 @@ import * as SQLite from "expo-sqlite";
 import { SavedPlant, PlantPhoto, WaterLog } from "@domain/plant";
 import { generateId } from "@utils/id";
 
-const DB_NAME = "verdure.db";
-const PLANTS_KEY = "verdure_plants";
+const DB_NAME = "sorrel.db";
+const PLANTS_KEY = "sorrel_plants";
 
 // Initialize database
 let db: SQLite.SQLiteDatabase | null = null;

@@ -7,7 +7,7 @@
  */
 
 import { query, queryOne } from "../db";
-import { VerdureError } from "../middleware/errorHandler";
+import { ApiError } from "../middleware/errorHandler";
 import { hashPassword } from "../services/auth";
 
 export type Plan = "free" | "pro" | "premium";
@@ -61,7 +61,7 @@ export async function createWithEmail(
 ): Promise<UserRow> {
   const existing = await findByEmail(email);
   if (existing) {
-    throw VerdureError.conflict("An account with that email already exists");
+    throw ApiError.conflict("An account with that email already exists");
   }
 
   const passwordHash = await hashPassword(password);
@@ -74,7 +74,7 @@ export async function createWithEmail(
   );
 
   if (!row) {
-    throw VerdureError.internal("Failed to create user");
+    throw ApiError.internal("Failed to create user");
   }
 
   return row;
@@ -106,7 +106,7 @@ export async function findOrCreateByDevice(deviceId: string): Promise<UserRow> {
   );
 
   if (!row) {
-    throw VerdureError.internal("Failed to create anonymous user");
+    throw ApiError.internal("Failed to create anonymous user");
   }
 
   return row;
@@ -131,7 +131,7 @@ export async function getQuota(userId: string): Promise<QuotaState> {
   const user = await findById(userId);
 
   if (!user) {
-    throw VerdureError.notFound("User not found");
+    throw ApiError.notFound("User not found");
   }
 
   // The stored counter is only meaningful for today. Rather than run a reset
@@ -163,7 +163,7 @@ export async function consumeQuota(userId: string): Promise<QuotaState | null> {
   const user = await findById(userId);
 
   if (!user) {
-    throw VerdureError.notFound("User not found");
+    throw ApiError.notFound("User not found");
   }
 
   const limit = PLAN_QUOTAS[user.plan];

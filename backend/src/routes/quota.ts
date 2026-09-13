@@ -10,7 +10,7 @@
  */
 
 import { Router, Request, Response } from "express";
-import { asyncHandler, VerdureError } from "../middleware/errorHandler";
+import { asyncHandler, ApiError } from "../middleware/errorHandler";
 import { requireAuth, requireSelf } from "../middleware/requireAuth";
 import * as Users from "../models/User";
 import { PLAN_QUOTAS } from "../models/User";
@@ -46,7 +46,7 @@ quotaRoutes.post(
     if (!state) {
       const current = await Users.getQuota(req.params.userId);
 
-      throw VerdureError.tooManyRequests(
+      throw ApiError.tooManyRequests(
         `Daily limit reached. Your ${current.limit} scans reset at midnight.`
       );
     }

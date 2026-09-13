@@ -42,7 +42,7 @@ Notifications.setNotificationHandler({
 export class PushNotificationService {
   private deviceToken: string | null = null;
   private reminders: Map<string, ScheduledReminder> = new Map();
-  private REMINDERS_STORAGE_KEY = "verdure_reminders";
+  private REMINDERS_STORAGE_KEY = "sorrel_reminders";
 
   /**
    * Initialize push notifications

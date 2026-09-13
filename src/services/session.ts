@@ -10,7 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiClient, PublicUser } from "./apiClient";
 import { generateId } from "@utils/id";
 
-const DEVICE_ID_KEY = "folium_device_id";
+const DEVICE_ID_KEY = "sorrel_device_id";
 
 /**
  * The stable id for this install.

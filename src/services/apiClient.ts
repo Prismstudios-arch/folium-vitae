@@ -1,5 +1,5 @@
 /**
- * Client for the Folium Vitae API.
+ * Client for the Sorrel API.
  *
  * All identification goes through this client to our own server, never
  * straight to the vision provider — that is what keeps the provider key off
@@ -11,7 +11,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_URL, DEFAULT_TIMEOUT_MS, IDENTIFY_TIMEOUT_MS } from "@constants/config";
 import { IdentificationImage, IdentificationResult, Species } from "@domain/plant";
 
-const TOKEN_STORAGE_KEY = "folium_auth_tokens";
+const TOKEN_STORAGE_KEY = "sorrel_auth_tokens";
 
 export interface AuthTokens {
   accessToken: string;

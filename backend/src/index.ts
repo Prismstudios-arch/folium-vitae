@@ -1,5 +1,5 @@
 /**
- * Verdure Backend API
+ * Sorrel Backend API
  * Phase 2: Complete production-ready server
  *
  * Features:
@@ -96,7 +96,7 @@ app.get("/health", async (_req: Request, res: Response) => {
 
   res.status(database.connected ? 200 : 503).json({
     status: database.connected ? "ok" : "degraded",
-    service: "folium-vitae-api",
+    service: "sorrel-api",
     version: "2.0.0",
     environment: NODE_ENV,
     database,
@@ -158,7 +158,7 @@ app.use(errorHandler);
 // which a container platform routing over IPv4 cannot always reach — the
 // process looks healthy in its own logs while the edge returns 502.
 const server = app.listen(Number(PORT), "0.0.0.0", async () => {
-  logger.info(`Folium Vitae API listening on 0.0.0.0:${PORT} (${NODE_ENV})`);
+  logger.info(`Sorrel API listening on 0.0.0.0:${PORT} (${NODE_ENV})`);
 
   // Prove the database is reachable at boot rather than discovering it on
   // the first user request. A bad DATABASE_URL should be obvious in the

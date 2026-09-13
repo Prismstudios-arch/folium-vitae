@@ -8,7 +8,7 @@
 
 import { Request, Response, NextFunction } from "express";
 import { verifyToken, TokenPayload } from "../services/auth";
-import { VerdureError } from "./errorHandler";
+import { ApiError } from "./errorHandler";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -23,7 +23,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   const header = req.headers.authorization;
 
   if (!header?.startsWith("Bearer ")) {
-    return next(VerdureError.unauthorized("Missing bearer token"));
+    return next(ApiError.unauthorized("Missing bearer token"));
   }
 
   try {
@@ -44,11 +44,11 @@ export function requireSelf(req: Request, _res: Response, next: NextFunction): v
   const target = req.params.userId;
 
   if (!req.auth) {
-    return next(VerdureError.unauthorized("Not authenticated"));
+    return next(ApiError.unauthorized("Not authenticated"));
   }
 
   if (target && target !== req.auth.sub) {
-    return next(VerdureError.forbidden("You can only access your own data"));
+    return next(ApiError.forbidden("You can only access your own data"));
   }
 
   next();

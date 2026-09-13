@@ -7,7 +7,7 @@
  */
 
 import axios, { AxiosInstance } from "axios";
-import { VerdureError } from "../middleware/errorHandler";
+import { ApiError } from "../middleware/errorHandler";
 import logger from "../utils/logger";
 
 export interface Species {
@@ -94,13 +94,13 @@ export async function identify(
   const apiKey = process.env.KINDWISE_API_KEY;
 
   if (!apiKey) {
-    throw VerdureError.serviceUnavailable(
+    throw ApiError.serviceUnavailable(
       "Plant identification is not configured on this server yet."
     );
   }
 
   if (imagesBase64.length === 0) {
-    throw VerdureError.badRequest("At least one image is required");
+    throw ApiError.badRequest("At least one image is required");
   }
 
   let response;
@@ -127,37 +127,37 @@ export async function identify(
       // Never surface the provider's message verbatim — it can echo the key.
       if (status === 401 || status === 403) {
         logger.error("Kindwise rejected our API key");
-        throw VerdureError.serviceUnavailable("Identification is temporarily unavailable.");
+        throw ApiError.serviceUnavailable("Identification is temporarily unavailable.");
       }
       if (status === 429) {
-        throw VerdureError.serviceUnavailable(
+        throw ApiError.serviceUnavailable(
           "Identification is busy right now. Try again in a moment."
         );
       }
       if (status && status >= 500) {
-        throw VerdureError.serviceUnavailable(
+        throw ApiError.serviceUnavailable(
           "The identification service is down. Try again shortly."
         );
       }
       if (error.code === "ECONNABORTED") {
-        throw VerdureError.serviceUnavailable("Identification timed out. Try again.");
+        throw ApiError.serviceUnavailable("Identification timed out. Try again.");
       }
     }
 
     logger.error("Kindwise request failed:", error);
-    throw VerdureError.serviceUnavailable("Identification failed. Try again.");
+    throw ApiError.serviceUnavailable("Identification failed. Try again.");
   }
 
   const result = response.data.result;
 
   if ((result?.is_plant?.probability ?? 0) < IS_PLANT_THRESHOLD) {
-    throw VerdureError.unprocessable("We couldn't find a plant in that photo.");
+    throw ApiError.unprocessable("We couldn't find a plant in that photo.");
   }
 
   const suggestions = (result?.classification?.suggestions ?? []).slice(0, MAX_CANDIDATES);
 
   if (suggestions.length === 0) {
-    throw VerdureError.unprocessable("We couldn't identify that one. Try a clearer photo.");
+    throw ApiError.unprocessable("We couldn't identify that one. Try a clearer photo.");
   }
 
   return {

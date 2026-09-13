@@ -85,7 +85,7 @@ function Screen1({ onNext }: { onNext: () => void }) {
     <View style={styles.screen}>
       <View style={styles.topSection}>
         <Text style={styles.emoji}>🌱</Text>
-        <Text style={styles.title}>Welcome to Verdure</Text>
+        <Text style={styles.title}>Welcome to Sorrel</Text>
         <Text style={styles.subtitle}>The honest plant identification app</Text>
       </View>
 

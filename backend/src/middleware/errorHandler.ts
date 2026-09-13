@@ -6,12 +6,13 @@
 import { Request, Response, NextFunction } from "express";
 import logger from "../utils/logger";
 
-export interface ApiError extends Error {
+/** Any error that carries an HTTP status — including ones thrown by libraries. */
+export interface HttpError extends Error {
   statusCode?: number;
   details?: Record<string, any>;
 }
 
-export class VerdureError extends Error implements ApiError {
+export class ApiError extends Error implements HttpError {
   statusCode: number;
   details?: Record<string, any>;
 
@@ -19,31 +20,31 @@ export class VerdureError extends Error implements ApiError {
     super(message);
     this.statusCode = statusCode;
     this.details = details;
-    Object.setPrototypeOf(this, VerdureError.prototype);
+    Object.setPrototypeOf(this, ApiError.prototype);
   }
 
   static badRequest(message: string, details?: Record<string, any>) {
-    return new VerdureError(400, message, details);
+    return new ApiError(400, message, details);
   }
 
   static unauthorized(message: string = "Unauthorized") {
-    return new VerdureError(401, message);
+    return new ApiError(401, message);
   }
 
   static forbidden(message: string = "Forbidden") {
-    return new VerdureError(403, message);
+    return new ApiError(403, message);
   }
 
   static notFound(message: string = "Not found") {
-    return new VerdureError(404, message);
+    return new ApiError(404, message);
   }
 
   static conflict(message: string, details?: Record<string, any>) {
-    return new VerdureError(409, message, details);
+    return new ApiError(409, message, details);
   }
 
   static tooManyRequests(message: string = "Too many requests") {
-    return new VerdureError(429, message);
+    return new ApiError(429, message);
   }
 
   /**
@@ -51,16 +52,16 @@ export class VerdureError extends Error implements ApiError {
    * plant in it, for example. Distinct from 400: the client did nothing wrong.
    */
   static unprocessable(message: string, details?: Record<string, any>) {
-    return new VerdureError(422, message, details);
+    return new ApiError(422, message, details);
   }
 
   static internal(message: string = "Internal server error", details?: Record<string, any>) {
-    return new VerdureError(500, message, details);
+    return new ApiError(500, message, details);
   }
 
   /** An upstream dependency is unavailable. Retryable; not the caller's fault. */
   static serviceUnavailable(message: string = "Service temporarily unavailable") {
-    return new VerdureError(503, message);
+    return new ApiError(503, message);
   }
 }
 

@@ -8,7 +8,7 @@
  */
 
 import { Router, Request, Response } from "express";
-import { asyncHandler, VerdureError } from "../middleware/errorHandler";
+import { asyncHandler, ApiError } from "../middleware/errorHandler";
 import { requireAuth } from "../middleware/requireAuth";
 import { query, queryOne } from "../db";
 import * as Users from "../models/User";
@@ -32,11 +32,11 @@ function parseImages(body: unknown): { base64: string[]; organs: string[] } {
   const images = (body as { images?: IncomingImage[] })?.images;
 
   if (!Array.isArray(images) || images.length === 0) {
-    throw VerdureError.badRequest("Send at least one image");
+    throw ApiError.badRequest("Send at least one image");
   }
 
   if (images.length > MAX_IMAGES) {
-    throw VerdureError.badRequest(`Send at most ${MAX_IMAGES} images`);
+    throw ApiError.badRequest(`Send at most ${MAX_IMAGES} images`);
   }
 
   const base64: string[] = [];
@@ -45,7 +45,7 @@ function parseImages(body: unknown): { base64: string[]; organs: string[] } {
 
   for (const image of images) {
     if (typeof image?.base64 !== "string" || image.base64.length === 0) {
-      throw VerdureError.badRequest("Each image needs base64 data");
+      throw ApiError.badRequest("Each image needs base64 data");
     }
 
     // Accept a data: URI or a bare payload; the provider wants the latter.
@@ -56,7 +56,7 @@ function parseImages(body: unknown): { base64: string[]; organs: string[] } {
     total += payload.length;
 
     if (total > MAX_TOTAL_BASE64) {
-      throw VerdureError.badRequest("Those photos are too large. Try fewer, or smaller.");
+      throw ApiError.badRequest("Those photos are too large. Try fewer, or smaller.");
     }
 
     base64.push(payload);
@@ -73,12 +73,12 @@ identifyRoutes.post(
     const imageHash = (req.body as { imageHash?: unknown })?.imageHash;
 
     if (typeof imageHash !== "string" || imageHash.length < 8) {
-      throw VerdureError.badRequest("An image hash is required");
+      throw ApiError.badRequest("An image hash is required");
     }
 
     if (!isProviderConfigured()) {
       // Explicitly not a mock fallback. An unconfigured server says so.
-      throw VerdureError.serviceUnavailable(
+      throw ApiError.serviceUnavailable(
         "Plant identification is not configured on this server yet."
       );
     }
@@ -106,7 +106,7 @@ identifyRoutes.post(
     const quota = await Users.getQuota(userId);
 
     if (quota.remaining <= 0) {
-      throw VerdureError.tooManyRequests(
+      throw ApiError.tooManyRequests(
         `Daily limit reached. Your ${quota.limit} scans reset at midnight.`
       );
     }

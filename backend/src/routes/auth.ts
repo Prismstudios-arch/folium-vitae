@@ -7,7 +7,7 @@
  */
 
 import { Router, Request, Response } from "express";
-import { asyncHandler, VerdureError } from "../middleware/errorHandler";
+import { asyncHandler, ApiError } from "../middleware/errorHandler";
 import { requireAuth } from "../middleware/requireAuth";
 import { issueTokens, verifyPassword, verifyToken } from "../services/auth";
 import * as Users from "../models/User";
@@ -20,10 +20,10 @@ const MIN_PASSWORD_LENGTH = 8;
 
 function assertValidCredentials(email: unknown, password: unknown): asserts email is string {
   if (typeof email !== "string" || !EMAIL_PATTERN.test(email)) {
-    throw VerdureError.badRequest("Enter a valid email address");
+    throw ApiError.badRequest("Enter a valid email address");
   }
   if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
-    throw VerdureError.badRequest(
+    throw ApiError.badRequest(
       `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
     );
   }
@@ -40,7 +40,7 @@ authRoutes.post(
     assertValidCredentials(email, password);
 
     if (typeof displayName !== "string" || displayName.trim().length === 0) {
-      throw VerdureError.badRequest("Enter a display name");
+      throw ApiError.badRequest("Enter a display name");
     }
 
     const user = await Users.createWithEmail(email, password, displayName.trim());
@@ -67,7 +67,7 @@ authRoutes.post(
     // Same message whether the account is missing or the password is wrong —
     // distinguishing them lets an attacker enumerate registered emails.
     if (!user?.password_hash || !(await verifyPassword(password, user.password_hash))) {
-      throw VerdureError.unauthorized("Email or password is incorrect");
+      throw ApiError.unauthorized("Email or password is incorrect");
     }
 
     const tokens = issueTokens({ sub: user.id, plan: user.plan, anonymous: false });
@@ -86,7 +86,7 @@ authRoutes.post(
     const { deviceId } = req.body ?? {};
 
     if (typeof deviceId !== "string" || deviceId.trim().length < 8) {
-      throw VerdureError.badRequest("A device id is required");
+      throw ApiError.badRequest("A device id is required");
     }
 
     const user = await Users.findOrCreateByDevice(deviceId.trim());
@@ -105,7 +105,7 @@ authRoutes.post(
     const { refreshToken } = req.body ?? {};
 
     if (typeof refreshToken !== "string") {
-      throw VerdureError.badRequest("A refresh token is required");
+      throw ApiError.badRequest("A refresh token is required");
     }
 
     const payload = verifyToken(refreshToken, "refresh");
@@ -115,7 +115,7 @@ authRoutes.post(
     const user = await Users.findById(payload.sub);
 
     if (!user) {
-      throw VerdureError.unauthorized("Account no longer exists");
+      throw ApiError.unauthorized("Account no longer exists");
     }
 
     const tokens = issueTokens({
@@ -138,7 +138,7 @@ authRoutes.get(
     const user = await Users.findById(req.auth!.sub);
 
     if (!user) {
-      throw VerdureError.notFound("User not found");
+      throw ApiError.notFound("User not found");
     }
 
     res.json({ user: Users.toPublicUser(user) });

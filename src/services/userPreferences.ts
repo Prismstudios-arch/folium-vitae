@@ -10,7 +10,7 @@ export interface UserPreferences {
   referralSource?: string;
 }
 
-const PREFS_KEY = "verdure_user_preferences";
+const PREFS_KEY = "sorrel_user_preferences";
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   hasCompletedOnboarding: false,
