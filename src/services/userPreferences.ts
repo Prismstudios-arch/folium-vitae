@@ -63,16 +63,19 @@ export async function resetAllData(): Promise<void> {
 }
 
 export async function exportUserData(): Promise<string> {
-  try {
-    const prefs = await getUserPreferences();
-    // In Phase 2, would also export database
-    const data = {
-      preferences: prefs,
+  // Read storage directly rather than through getUserPreferences(), which
+  // deliberately falls back to defaults so the UI can still render. An export
+  // must never hand someone a file of default settings and call it their data
+  // — if storage is unreadable, the caller needs to know it failed.
+  const stored = await AsyncStorage.getItem(PREFS_KEY);
+  const preferences: UserPreferences = stored ? JSON.parse(stored) : DEFAULT_PREFERENCES;
+
+  return JSON.stringify(
+    {
+      preferences,
       exportedAt: new Date().toISOString(),
-    };
-    return JSON.stringify(data, null, 2);
-  } catch (error) {
-    console.error("Failed to export data:", error);
-    throw error;
-  }
+    },
+    null,
+    2
+  );
 }

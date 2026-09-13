@@ -9,7 +9,7 @@ import {
   addWaterLog,
   searchPlants,
 } from "@services/database";
-import { SavedPlant, PlantPhoto, WaterLog } from "@types/plant";
+import { SavedPlant, PlantPhoto, WaterLog } from "@domain/plant";
 
 /**
  * Hook for managing plants in the database

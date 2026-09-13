@@ -5,12 +5,13 @@ import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button, SecondaryButton } from "@components/Button";
 import { ConfidenceBadge } from "@components/Card";
 import { useIdentification } from "@hooks/useIdentification";
-import { IdentificationResult, CalibratedConfidence } from "@types/plant";
+import { IdentificationResult, CalibratedConfidence } from "@domain/plant";
 
 export default function ResultScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const imageUri = params.imageUri as string | undefined;
+  const imageHash = params.imageHash as string | undefined;
 
   const { identify, identifying, result, confidence, error } = useIdentification();
   const [hasIdentified, setHasIdentified] = useState(false);
@@ -18,12 +19,12 @@ export default function ResultScreen() {
   // Trigger identification on mount
   useEffect(() => {
     if (imageUri && !hasIdentified) {
-      identify(imageUri).catch((err) => {
+      identify([{ uri: imageUri }], imageHash ?? imageUri).catch((err) => {
         console.error("Identification failed:", err);
       });
       setHasIdentified(true);
     }
-  }, [imageUri, hasIdentified, identify]);
+  }, [imageUri, imageHash, hasIdentified, identify]);
 
   const topCandidate = result?.candidates[0];
   const alternatives = result?.candidates.slice(1, 3) || [];

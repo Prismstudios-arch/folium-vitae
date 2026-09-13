@@ -1,5 +1,5 @@
 import { mapConfidenceBand, calibrateConfidence, IdentificationService, QuotaManager } from "./identification";
-import { ConfidenceBand } from "@types/plant";
+import { ConfidenceBand } from "@domain/plant";
 
 describe("Identification Service", () => {
   describe("Confidence Mapping", () => {
@@ -51,9 +51,9 @@ describe("Identification Service", () => {
     });
 
     it("should identify with mock mode", async () => {
-      const service = new IdentificationService("https://api.verdure.app", true);
+      const service = new IdentificationService({ mockMode: true });
       const result = await service.identify({
-        imageUri: "mock-image.jpg",
+        images: [{ uri: "mock-image.jpg" }],
         imageHash: "abc123",
       });
 
@@ -64,9 +64,10 @@ describe("Identification Service", () => {
     });
 
     it("should return top candidate with high confidence", async () => {
-      const service = new IdentificationService("https://api.verdure.app", true);
+      const service = new IdentificationService({ mockMode: true });
       const result = await service.identify({
-        imageUri: "mock-image.jpg",
+        images: [{ uri: "mock-image.jpg" }],
+        imageHash: "mock-image.jpg",
       });
 
       expect(result.candidates[0]).toHaveProperty("scientificName");

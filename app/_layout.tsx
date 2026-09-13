@@ -48,7 +48,7 @@ function NavigationLayout() {
           name="onboarding"
           options={{
             title: "Onboarding",
-            animationEnabled: false,
+            animation: "none",
           }}
         />
       ) : (

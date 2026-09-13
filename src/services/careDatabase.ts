@@ -1,4 +1,4 @@
-import { CareGuide, LightLevel, WaterFrequency, SoilType, ToxicityLevel } from "@types/plant";
+import { CareGuide, LightLevel, WaterFrequency, SoilType, ToxicityLevel } from "@domain/plant";
 
 /**
  * Seeded care knowledge database

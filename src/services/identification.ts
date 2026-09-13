@@ -1,7 +1,14 @@
 import axios, { AxiosInstance } from "axios";
-import { Species, IdentificationResult, ConfidenceBand, CalibratedConfidence } from "@types/plant";
-import { VerdureErrorType, createError } from "@types/errors";
-import { KindwiseProvider, createKindwiseProvider } from "./kindwiseProvider";
+import {
+  Species,
+  IdentificationRequest,
+  IdentificationResult,
+  ConfidenceBand,
+  CalibratedConfidence,
+} from "@domain/plant";
+import { VerdureErrorType, createError } from "@domain/errors";
+import { KindwiseProvider } from "./kindwiseProvider";
+import { getApiClient } from "./apiClient";
 
 // MARK: - Confidence Mapping
 
@@ -38,12 +45,6 @@ export function calibrateConfidence(rawScore: number): CalibratedConfidence {
 }
 
 // MARK: - Identification Service
-
-export interface IdentificationRequest {
-  imageBase64?: string;
-  imageUri?: string;
-  imageHash?: string;
-}
 
 export interface KindwiseResponse {
   predictions: Array<{
@@ -99,19 +100,17 @@ export class IdentificationService {
    * Identify a plant from image data
    * Returns honest confidence bands and top 5 alternatives
    */
-  async identify(imageBase64: string, imageHash?: string): Promise<IdentificationResult> {
+  async identify(request: IdentificationRequest): Promise<IdentificationResult> {
     try {
-      // Try real Kindwise API first (Phase 2)
+      // A configured provider is the only source of real answers. If it fails
+      // we surface the failure — we never quietly substitute invented results,
+      // because a fabricated ID presented as real is the precise thing this
+      // product exists to not do (SPEC 1, 3.3).
       if (this.kindwiseProvider) {
-        try {
-          return await this.kindwiseProvider.identify(imageBase64, imageHash);
-        } catch (error) {
-          console.warn("Kindwise identification failed, falling back to mock:", error);
-        }
+        return await this.kindwiseProvider.identify(request);
       }
 
-      // Fallback to mock responses (Phase 1)
-      return this.mockIdentify(imageBase64, imageHash);
+      return this.mockIdentify(request);
     } catch (error) {
       console.error("Identification failed:", error);
 
@@ -157,11 +156,9 @@ export class IdentificationService {
    * Phase 2: Integrated with Verdure backend API
    */
   async identifyWithBackend(
-    imageBase64: string,
-    imageHash: string,
+    request: IdentificationRequest,
     userId: string
   ): Promise<IdentificationResult> {
-    const { getApiClient } = await import("./apiClient");
     const api = getApiClient();
 
     try {
@@ -172,10 +169,10 @@ export class IdentificationService {
         throw createError(VerdureErrorType.QuotaExceeded);
       }
 
-      // Perform identification
-      const result = await this.identify(imageBase64, imageHash);
+      // Identify before consuming: a failed scan must not cost the user a
+      // credit (SPEC 5, "Identifying").
+      const result = await this.identify(request);
 
-      // Consume quota on backend
       await api.consumeQuota(userId);
 
       return result;
@@ -217,8 +214,8 @@ export class IdentificationService {
    * Mock identification for Phase 1 testing
    */
   private mockIdentify(request: IdentificationRequest): IdentificationResult {
-    // Deterministic mocking based on image URI (for testing)
-    const hash = request.imageHash || request.imageUri || "default";
+    // Deterministic so the same photo always yields the same fixture.
+    const hash = request.imageHash || request.images[0]?.uri || "default";
     const seed = hash.charCodeAt(0) % 10;
 
     const mockPlants = [

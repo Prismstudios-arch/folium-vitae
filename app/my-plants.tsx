@@ -13,7 +13,7 @@ import { useRouter } from "expo-router";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
 import { usePlants } from "@hooks/usePlants";
-import { SavedPlant } from "@types/plant";
+import { SavedPlant, getDisplayName, getMostRecentPhoto } from "@domain/plant";
 
 type SortBy = "name" | "date" | "recent";
 
@@ -54,14 +54,14 @@ export default function MyPlantsScreen() {
         break;
       case "recent":
         result = [...result].sort((a, b) => {
-          const photoA = a.mostRecentPhoto?.dateTaken || new Date(0);
-          const photoB = b.mostRecentPhoto?.dateTaken || new Date(0);
+          const photoA = getMostRecentPhoto(a)?.dateTaken || new Date(0);
+          const photoB = getMostRecentPhoto(b)?.dateTaken || new Date(0);
           return photoB.getTime() - photoA.getTime();
         });
         break;
       case "name":
       default:
-        result = [...result].sort((a, b) => a.displayName.localeCompare(b.displayName));
+        result = [...result].sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b)));
     }
 
     setFilteredPlants(result);
@@ -171,11 +171,13 @@ interface PlantGridItemProps {
 }
 
 function PlantGridItem({ plant, onPress, onDelete }: PlantGridItemProps) {
+  const coverPhoto = getMostRecentPhoto(plant);
+
   return (
     <TouchableOpacity style={styles.gridItem} onPress={() => onPress(plant)}>
-      {plant.mostRecentPhoto ? (
+      {coverPhoto ? (
         <Image
-          source={{ uri: `file://${plant.mostRecentPhoto.imagePath}` }}
+          source={{ uri: `file://${coverPhoto.imagePath}` }}
           style={styles.gridImage}
           resizeMode="cover"
         />
@@ -187,7 +189,7 @@ function PlantGridItem({ plant, onPress, onDelete }: PlantGridItemProps) {
 
       {/* Overlay */}
       <View style={styles.overlay}>
-        <Text style={styles.plantName}>{plant.displayName}</Text>
+        <Text style={styles.plantName}>{getDisplayName(plant)}</Text>
         {plant.location && <Text style={styles.location}>{plant.location}</Text>}
       </View>
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { CareGuide } from "@types/plant";
+import { CareGuide } from "@domain/plant";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { ToxicityBadge } from "./Card";
 

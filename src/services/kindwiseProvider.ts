@@ -5,7 +5,28 @@
  */
 
 import axios, { AxiosInstance } from "axios";
-import { Species, IdentificationResult, CalibratedConfidence } from "@types/plant";
+import { Species, IdentificationRequest, IdentificationResult } from "@domain/plant";
+
+/**
+ * Build a domain Species from the provider's flat name fields.
+ * Genus and species come off the binomial; family is left undefined rather
+ * than guessed, since Kindwise does not return it on this endpoint.
+ */
+function toSpecies(
+  scientificName: string,
+  commonNames: string[] | undefined,
+  rawScore: number
+): Species {
+  const [genus, species] = scientificName.split(/\s+/);
+
+  return {
+    id: scientificName.toLowerCase().replace(/\s+/g, "_"),
+    scientificName,
+    commonNames: commonNames?.length ? commonNames : [scientificName],
+    taxonomy: { genus: genus ?? scientificName, species },
+    rawScore,
+  };
+}
 import { calibrateConfidence } from "./identification";
 
 export interface KindwiseConfig {
@@ -88,21 +109,24 @@ export class KindwiseProvider {
   }
 
   /**
-   * Identify a plant from image
-   * @param imageBase64 Base64 encoded image
-   * @param imageHash Optional hash for caching (client-side feedback)
-   * @returns Identification result with top 5 candidates
+   * Identify a plant from one or more photos of the same specimen.
+   * Passing several organs (leaf, flower, whole plant) measurably improves
+   * provider accuracy, which is why the request carries a list (SPEC 3.2).
    */
-  async identify(imageBase64: string, imageHash?: string): Promise<IdentificationResult> {
+  async identify(request: IdentificationRequest): Promise<IdentificationResult> {
     try {
-      if (!imageBase64) {
+      const encoded = request.images
+        .map((image) => image.base64)
+        .filter((base64): base64 is string => Boolean(base64));
+
+      if (encoded.length === 0) {
         throw new Error("Image required for identification");
       }
 
       const response = await this.client.post<KindwiseResponse>(
         "/identification",
         {
-          images: [imageBase64],
+          images: encoded,
           moderation: false,
         },
         {
@@ -126,32 +150,16 @@ export class KindwiseProvider {
         throw new Error("Unable to identify plant. Try a clearer photo.");
       }
 
-      // Build identification result
-      const topCandidate = candidates[0];
-      const topConfidence = calibrateConfidence(topCandidate.probability);
-
+      // Normalise the provider's shape onto our domain model. rawScore stays
+      // raw here on purpose: calibration into bands is the caller's job, so
+      // that one place owns the thresholds (SPEC 3.3).
       const result: IdentificationResult = {
-        topCandidate: {
-          commonNames: topCandidate.name.common_names || [
-            topCandidate.name.scientific_name,
-          ],
-          scientificName: topCandidate.name.scientific_name,
-          confidence: topConfidence,
-          feedbackToken: response.data.feedback_token,
-          plantId: topCandidate.name.scientific_name.toLowerCase().replace(/\s+/g, "_"),
-        },
-        alternatives: candidates.slice(1).map((candidate) => ({
-          commonNames: candidate.name.common_names || [candidate.name.scientific_name],
-          scientificName: candidate.name.scientific_name,
-          confidence: calibrateConfidence(candidate.probability),
-          plantId: candidate.name.scientific_name.toLowerCase().replace(/\s+/g, "_"),
-        })),
-        metadata: {
-          imageHash: imageHash,
-          apiProvider: "kindwise",
-          identifiedAt: new Date().toISOString(),
-          modelVersion: "plant.id/v3",
-        },
+        candidates: candidates.map((candidate) =>
+          toSpecies(candidate.name.scientific_name, candidate.name.common_names, candidate.probability)
+        ),
+        provider: "kindwise",
+        timestamp: new Date(),
+        feedbackToken: response.data.feedback_token,
       };
 
       return result;

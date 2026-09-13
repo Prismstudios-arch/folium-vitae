@@ -73,7 +73,7 @@ export default function ScanScreen() {
 
   if (!hasPermission) {
     return (
-      <View style={styles.container}>
+      <View style={styles.permissionContainer}>
         <Text style={styles.title}>Camera access required</Text>
         <Text style={styles.subtitle}>We need permission to identify plants</Text>
         <Button label="Enable Camera" onPress={requestCameraPermission} style={styles.marginTop} />
@@ -84,7 +84,7 @@ export default function ScanScreen() {
   return (
     <View style={styles.container}>
       {/* Camera Preview */}
-      <CameraView ref={cameraRef} style={styles.camera} facing="back" torch={isTorchOn ? "on" : "off"}>
+      <CameraView ref={cameraRef} style={styles.camera} facing="back" enableTorch={isTorchOn}>
         {/* Overlay: Guide Frame */}
         <View style={styles.overlay}>
           {/* Top Bar */}
@@ -174,6 +174,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  permissionContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.loose,
+  },
+  title: {
+    ...Typography.headline,
+    color: Colors.textPrimary,
+    textAlign: "center",
+  },
+  subtitle: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    marginTop: Spacing.tight,
   },
   camera: {
     flex: 1,

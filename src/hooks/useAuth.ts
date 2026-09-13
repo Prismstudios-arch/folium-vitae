@@ -7,7 +7,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiClient, AuthToken } from "@services/apiClient";
-import { VerdureErrorType, createError } from "@types/errors";
+import { VerdureErrorType, createError } from "@domain/errors";
 
 interface AuthState {
   user: { id: string; email?: string; displayName: string } | null;
@@ -110,7 +110,7 @@ export function useAuth() {
         const token = await api.login(email, password);
 
         setState({
-          user: { id: token.userId, email },
+          user: { id: token.userId, email, displayName: email.split("@")[0] },
           isAuthenticated: true,
           isLoading: false,
           error: null,

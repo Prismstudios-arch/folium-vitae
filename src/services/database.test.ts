@@ -7,7 +7,7 @@ import {
   addPhoto,
   addWaterLog,
 } from "./database";
-import { ConfidenceBand } from "@types/plant";
+import { ConfidenceBand } from "@domain/plant";
 
 describe("Database Operations", () => {
   // Note: These tests would require a test database setup

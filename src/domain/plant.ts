@@ -6,7 +6,8 @@
 // MARK: - Taxonomy
 
 export interface Taxonomy {
-  family: string;
+  /** Undefined when the provider does not return it — never guessed. */
+  family?: string;
   genus: string;
   species?: string;
 }
@@ -23,16 +24,37 @@ export interface Species {
 
 // MARK: - Identification Request & Result
 
+/**
+ * Plant parts a photo can show. Providers are materially more accurate when
+ * given several organs of the same plant (SPEC 3.2), so capture coaches for
+ * these rather than accepting a single anonymous frame.
+ */
+export enum PlantOrgan {
+  Leaf = "leaf",
+  Flower = "flower",
+  Fruit = "fruit",
+  Bark = "bark",
+  Habit = "habit", // whole plant
+}
+
+export interface IdentificationImage {
+  uri: string; // local file URI from capture or the photo library
+  base64?: string; // populated only at the point of upload
+  organ?: PlantOrgan;
+}
+
 export interface IdentificationRequest {
-  imageData: Uint8Array;
+  images: IdentificationImage[];
   imageHash: string;
-  priorSpecies?: Species[]; // For multi-image identification
+  priorSpecies?: Species[]; // carried across a multi-image refinement
 }
 
 export interface IdentificationResult {
   candidates: Species[];
   provider: string;
   timestamp: Date;
+  /** Opaque provider token used to submit a user correction (SPEC 3.3). */
+  feedbackToken?: string;
 }
 
 export enum ConfidenceBand {
@@ -206,6 +228,20 @@ export function getDisplayName(plant: SavedPlant | Species): string {
     return plant.nickname;
   }
   return plant.commonNames[0] || plant.scientificName;
+}
+
+/**
+ * Most recently taken photo, or undefined when the plant has none.
+ * Photos are not guaranteed to arrive in date order, so compare rather
+ * than trusting array position.
+ */
+export function getMostRecentPhoto(plant: SavedPlant): PlantPhoto | undefined {
+  if (plant.photos.length === 0) {
+    return undefined;
+  }
+  return plant.photos.reduce((latest, photo) =>
+    photo.dateTaken.getTime() > latest.dateTaken.getTime() ? photo : latest
+  );
 }
 
 export function getToxicityText(toxicity: Toxicity): string | null {

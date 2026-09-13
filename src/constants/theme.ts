@@ -9,6 +9,7 @@
 export const Colors = {
   // Primary Palette
   leaf: "#2D5842", // Deep sage green — trust, growth
+  leafLight: "#A8C4B4", // Desaturated sage — active control tracks, tints
   cream: "#FDFBF8", // Off-white with yellow undertone
   glass: "#E8E5E0", // Soft grey-brown — borders, dividers
   soil: "#8B7355", // Warm brown — secondary text
@@ -36,6 +37,7 @@ export const Colors = {
 // Dark mode colors (override above in dark context)
 export const ColorsDark = {
   leaf: "#A8D5BA", // Light green
+  leafLight: "#3E6B54", // Sage that reads as "on" against the dark ground
   cream: "#0F0D0A", // Deep charcoal
   glass: "#423A32", // Glass inverted
   soil: "#C8B89D", // Soil lightened

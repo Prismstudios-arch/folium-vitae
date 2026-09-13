@@ -1,87 +1,81 @@
-import { useState, useCallback } from "react";
-import { IdentificationService, QuotaManager } from "@services/identification";
-import { IdentificationResult, CalibratedConfidence, ConfidenceBand } from "@types/plant";
-import { VerdureError } from "@types/errors";
+import { useState, useCallback, useMemo } from "react";
+import {
+  IdentificationService,
+  QuotaManager,
+  calibrateConfidence,
+} from "@services/identification";
+import {
+  IdentificationImage,
+  IdentificationResult,
+  CalibratedConfidence,
+} from "@domain/plant";
+import { VerdureError, VerdureErrorType, createError } from "@domain/errors";
 
 /**
- * Hook for plant identification
- * Manages identification state, quota, and error handling
+ * Hook for plant identification.
+ * Owns the identify -> calibrate -> consume-credit sequence and the
+ * surrounding UI state.
  */
 export function useIdentification() {
   const [identifying, setIdentifying] = useState(false);
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const [confidence, setConfidence] = useState<CalibratedConfidence | null>(null);
   const [error, setError] = useState<VerdureError | null>(null);
-  const [quotaRemaining, setQuotaRemaining] = useState(7);
+  const [quotaRemaining, setQuotaRemaining] = useState(0);
 
-  const identificationService = new IdentificationService("https://api.verdure.app", true); // Mock mode
-  const quotaManager = new QuotaManager();
+  // Built once per mount. Constructing these on every render rebuilt the
+  // HTTP client and quota reader on each keystroke.
+  const identificationService = useMemo(() => new IdentificationService(), []);
+  const quotaManager = useMemo(() => new QuotaManager(), []);
 
   const identify = useCallback(
-    async (imageUri: string, imageHash?: string) => {
-      try {
-        setIdentifying(true);
-        setError(null);
+    async (images: IdentificationImage[], imageHash: string) => {
+      setIdentifying(true);
+      setError(null);
 
-        // Check quota first
+      try {
         const quota = await quotaManager.getQuota();
-        if (!quota.remaining) {
-          throw {
-            type: "QUOTA_EXCEEDED",
-            message: "Daily limit reached",
-            description: "You've reached your daily scan limit",
-            recovery: `Your limit resets at ${quota.resetsAt.toLocaleTimeString()}`,
-          } as VerdureError;
+        if (quota.remaining <= 0) {
+          throw createError(VerdureErrorType.QuotaExceeded);
         }
 
-        // Identify the plant
         const identResult = await identificationService.identify({
-          imageUri,
+          images,
           imageHash,
         });
 
-        // Get top candidate and calibrate confidence
         const topCandidate = identResult.candidates[0];
         if (!topCandidate) {
-          throw {
-            type: "IDENTIFICATION_FAILED",
-            message: "No candidates returned",
-            description: "Couldn't identify this plant",
-          } as VerdureError;
+          throw createError(VerdureErrorType.IdentificationFailed);
         }
 
-        // Calibrate confidence
-        const { mapConfidenceBand, calibrateConfidence } = require("@services/identification");
-        const calibratedConf = calibrateConfidence(topCandidate.rawScore);
+        const calibrated = calibrateConfidence(topCandidate.rawScore);
 
         setResult(identResult);
-        setConfidence(calibratedConf);
+        setConfidence(calibrated);
 
-        // Consume a credit
+        // Only charge a credit once we actually have an answer. Charging for
+        // our own failure is exactly the behaviour this product rejects.
         await quotaManager.consumeCredit();
-        const newQuota = await quotaManager.getQuota();
-        setQuotaRemaining(newQuota.remaining);
+        setQuotaRemaining((await quotaManager.getQuota()).remaining);
 
-        return {
-          result: identResult,
-          confidence: calibratedConf,
-        };
+        return { result: identResult, confidence: calibrated };
       } catch (err) {
-        const error = err as VerdureError;
-        setError(error);
-        throw error;
+        const verdureError = err as VerdureError;
+        setError(verdureError);
+        throw verdureError;
       } finally {
         setIdentifying(false);
       }
     },
-    []
+    [identificationService, quotaManager]
   );
 
   const getQuotaInfo = useCallback(async () => {
     const quota = await quotaManager.getQuota();
     setQuotaRemaining(quota.remaining);
     return quota;
-  }, []);
+  }, [quotaManager]);
 
   const reset = useCallback(() => {
     setResult(null);

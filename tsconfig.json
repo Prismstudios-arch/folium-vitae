@@ -18,8 +18,8 @@
       "@hooks/*": [
         "src/hooks/*"
       ],
-      "@types/*": [
-        "src/types/*"
+      "@domain/*": [
+        "src/domain/*"
       ],
       "@utils/*": [
         "src/utils/*"

@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SQLite from "expo-sqlite";
-import { SavedPlant, PlantPhoto, WaterLog } from "@types/plant";
+import { SavedPlant, PlantPhoto, WaterLog } from "@domain/plant";
 import { generateId } from "@utils/id";
 
 const DB_NAME = "verdure.db";

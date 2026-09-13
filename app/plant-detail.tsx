@@ -15,7 +15,7 @@ import { Button } from "@components/Button";
 import { CareCard } from "@components/CareCard";
 import { usePlant } from "@hooks/usePlants";
 import { getCareGuide } from "@services/careDatabase";
-import { SavedPlant, CareGuide } from "@types/plant";
+import { SavedPlant, CareGuide, getDisplayName } from "@domain/plant";
 
 export default function PlantDetailScreen() {
   const router = useRouter();
@@ -47,7 +47,7 @@ export default function PlantDetailScreen() {
   };
 
   const handleDelete = () => {
-    Alert.alert("Delete Plant", `Remove ${plant?.displayName} from your collection?`, [
+    Alert.alert("Delete Plant", `Remove ${plant ? getDisplayName(plant) : "this plant"} from your collection?`, [
       { text: "Cancel", onPress: () => {} },
       {
         text: "Delete",
@@ -124,7 +124,7 @@ export default function PlantDetailScreen() {
           </EditableSection>
         ) : (
           <ViewSection>
-            <Text style={styles.nickname}>{plant.displayName}</Text>
+            <Text style={styles.nickname}>{getDisplayName(plant)}</Text>
             <Text style={styles.scientificName}>{plant.scientificName}</Text>
             {plant.location && <Text style={styles.location}>📍 {plant.location}</Text>}
 
