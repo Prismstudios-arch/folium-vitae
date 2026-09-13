@@ -1,0 +1,10 @@
+tsconfig.json
+app.json
+jest.config.js
+jest.setup.js
+TESTING.md
+SUPABASE_SETUP_GUIDE.html
+*.md
+node_modules
+.git
+.gitignore
