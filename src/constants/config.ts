@@ -41,8 +41,10 @@ export const SUPPORT_EMAIL = "sorrelaiplant@outlook.com";
  * exist as well so the paywall can satisfy Guideline 3.1.2 and so the text is
  * readable offline.
  */
-export const PRIVACY_POLICY_URL = "https://sorrel.app/privacy";
-export const TERMS_URL = "https://sorrel.app/terms";
+const LEGAL_SITE = "https://jonnywilsonnn2012-maker.github.io/folium-vitae";
+
+export const PRIVACY_POLICY_URL = `${LEGAL_SITE}/privacy.html`;
+export const TERMS_URL = `${LEGAL_SITE}/terms.html`;
 
 /** Apple's own subscription management page. Never a link of our own. */
 export const MANAGE_SUBSCRIPTION_URL = "https://apps.apple.com/account/subscriptions";

@@ -28,6 +28,7 @@ module.exports = {
     "^@utils/(.*)$": "<rootDir>/src/utils/$1",
     "^@services/(.*)$": "<rootDir>/src/services/$1",
     "^@constants/(.*)$": "<rootDir>/src/constants/$1",
+    "^@content/(.*)$": "<rootDir>/src/content/$1",
     "^@tests/(.*)$": "<rootDir>/src/tests/$1",
   },
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],

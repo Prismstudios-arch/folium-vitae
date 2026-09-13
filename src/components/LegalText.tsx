@@ -3,6 +3,42 @@ import { ReactNode } from "react";
 import { useRouter } from "expo-router";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { SUPPORT_EMAIL, LEGAL_LAST_UPDATED } from "@constants/config";
+import { LegalDocument, Block } from "@content/legal";
+
+/**
+ * Renders a legal document from src/content/legal.ts.
+ *
+ * The same data drives the public web pages, so the in-app text and the URL
+ * App Store Connect points at cannot drift apart.
+ */
+export function LegalDocumentView({ document }: { document: LegalDocument }) {
+  return (
+    <LegalPage title={document.title}>
+      {document.intro.map((block, index) => (
+        <BlockView key={`intro-${index}`} block={block} />
+      ))}
+
+      {document.sections.map((section) => (
+        <Section key={section.heading} heading={section.heading}>
+          {section.blocks.map((block, index) => (
+            <BlockView key={`${section.heading}-${index}`} block={block} />
+          ))}
+        </Section>
+      ))}
+    </LegalPage>
+  );
+}
+
+function BlockView({ block }: { block: Block }) {
+  switch (block.type) {
+    case "bullet":
+      return <Bullet>{block.text}</Bullet>;
+    case "highlight":
+      return <Highlight>{block.text}</Highlight>;
+    default:
+      return <Paragraph>{block.text}</Paragraph>;
+  }
+}
 
 /** Page wrapper for the legal screens. */
 export function LegalPage({ title, children }: { title: string; children: ReactNode }) {

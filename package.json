@@ -16,7 +16,8 @@
     "doctor": "npx expo-doctor",
     "care:validate": "node scripts/validate-care-data.js",
     "assets": "node scripts/generate-assets.js",
-    "benchmark": "node benchmark/run.js"
+    "benchmark": "node benchmark/run.js",
+    "legal:build": "node scripts/build-legal-site.js"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "1.23.1",

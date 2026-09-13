@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Sorrel</title>
+<style>
+  :root {
+    --ground: #FDFBF8;
+    --ink: #1A1A1A;
+    --ink-soft: #5C6B61;
+    --leaf: #2D5842;
+    --rule: #E8E5E0;
+    --surface: #F1F4F0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0C1410;
+      --ink: #E8EDE7;
+      --ink-soft: #9AA89E;
+      --leaf: #6FC79A;
+      --rule: #24302A;
+      --surface: #151F1A;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 40rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  a { color: var(--leaf); }
+  .home { display: inline-block; margin-bottom: 2rem; font-weight: 500; text-decoration: none; }
+  h1 { font-size: 2rem; line-height: 1.15; margin: 0 0 .35rem; letter-spacing: -.02em; }
+  .updated { color: var(--ink-soft); font-size: .875rem; margin: 0 0 2.5rem; }
+  h2 { font-size: 1.1rem; margin: 2.25rem 0 .6rem; letter-spacing: -.01em; }
+  p, li { color: var(--ink-soft); }
+  ul { padding-left: 1.1rem; }
+  li { margin-bottom: .4rem; }
+  .highlight {
+    background: var(--surface);
+    border-left: 3px solid var(--leaf);
+    border-radius: 4px;
+    padding: 1rem 1.15rem;
+    margin: 1.25rem 0;
+    color: var(--ink);
+  }
+  footer { margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); }
+</style>
+</head>
+<body>
+  <main>
+    <a class="home" href="./">← Sorrel</a>
+    <h1>Privacy</h1>
+    <p class="updated">Last updated 13 September 2026</p>
+
+      <p>Sorrel is built so that we hold as little about you as possible. This page says exactly what we collect, why, and who else sees it. No lawyer-speak.</p>
+      <div class="highlight">You do not need an account to use Sorrel. We do not sell your data, we do not run ads, and we do not track your location.</div>
+
+      <h2>Photos you scan</h2>
+      <p>When you identify a plant, the photo is sent to our server, which passes it to our identification provider and returns the answer.</p>
+      <p>Before a photo leaves your phone we resize it and re-encode it, which removes the embedded metadata cameras attach — including the GPS coordinates of where it was taken. For houseplants that is usually your home, so we strip it rather than ask you to trust us with it.</p>
+      <p>We keep a fingerprint of each photo so that re-scanning the same plant returns the previous answer instantly, without costing you one of your daily scans.</p>
+
+      <h2>What we store about you</h2>
+      <ul>
+      <li>A random identifier for your install. It is generated on your device and is not tied to your phone's hardware, your Apple ID, or you.</li>
+      <li>How many scans you have used today, so the daily limit works and cannot be reset by reinstalling.</li>
+      <li>Your email address and an encrypted form of your password — only if you choose to create an account so your collection survives a new phone.</li>
+      </ul>
+
+      <h2>What stays on your phone</h2>
+      <p>Your plant collection lives on your device, not our servers. That includes nicknames, the room you keep each plant in, your notes, your photo journal and your watering history. It works with no signal, and we cannot read it.</p>
+      <p>Your settings — units, hemisphere, toxicity warnings, reminders — are also stored locally.</p>
+
+      <h2>Who else sees anything</h2>
+      <ul>
+      <li>Our identification provider receives the photo in order to identify it. It does not receive your identifier, your collection, or anything else about you.</li>
+      <li>Our hosting providers store the database and run the server. They do not use the data for anything of their own.</li>
+      <li>If you subscribe, our payments provider handles the subscription. Card details go to Apple, never to us — we never see them.</li>
+      </ul>
+      <p>That is the complete list. There are no advertising networks, no data brokers, and no third-party trackers in this app.</p>
+
+      <h2>Your data is yours</h2>
+      <p>Settings has a button that exports everything we hold, and a button that deletes it. Deleting removes your plants and your account data. No email, no waiting, no support ticket.</p>
+
+      <h2>Children</h2>
+      <p>Sorrel is not aimed at children under 13, and we do not knowingly collect anything from them. If you believe a child has given us information, email sorrelaiplant@outlook.com and we will delete it.</p>
+
+      <h2>Changes</h2>
+      <p>If we change what we collect or who receives it, we will update this page and the date at the top, and tell you in the app before the change takes effect.</p>
+
+    <footer>
+      <h2>Contact</h2>
+      <p>Questions about any of this go to a person, not a form:</p>
+      <p><a href="mailto:sorrelaiplant@outlook.com">sorrelaiplant@outlook.com</a></p>
+    </footer>
+  </main>
+</body>
+</html>

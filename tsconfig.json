@@ -27,6 +27,9 @@
       "@services/*": [
         "src/services/*"
       ],
+      "@content/*": [
+        "src/content/*"
+      ],
       "@constants/*": [
         "src/constants/*"
       ]
