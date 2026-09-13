@@ -1,7 +1,8 @@
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator} from "react-native";
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { CameraView } from "expo-camera";
+import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
@@ -27,8 +28,26 @@ export default function ScanScreen() {
     }
   }, [hasPermission, requestCameraPermission]);
 
+  /** Anywhere the shutter is legitimately pressable. */
+  const canCapture = state === "idle" || state === "failed";
+
+  const goBack = () => {
+    // Onboarding reaches this screen with router.replace, which leaves no
+    // history — back() then silently does nothing and the user is stuck.
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/");
+    }
+  };
+
   const handleCapture = async () => {
-    if (state !== "idle") return;
+    if (!canCapture) return;
+
+    // Clear a previous failure, or the old reasons stay on screen behind
+    // the new attempt.
+    setError(null);
+    setPreFlightResult(null);
 
     setState("capturing");
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -66,6 +85,36 @@ export default function ScanScreen() {
     }
   };
 
+  /** SPEC §5 asks for a photo-library entry alongside the camera. */
+  const handlePickFromLibrary = async () => {
+    if (!canCapture) return;
+
+    try {
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (picked.canceled || !picked.assets[0]) return;
+
+      const asset = picked.assets[0];
+      setState("checking");
+
+      // Library photos skip the blur and exposure checks: the user chose
+      // this image deliberately, and rejecting a picture they already have
+      // is not the same courtesy as warning them before a shot is wasted.
+      const capture = await holdCapture(asset.uri, asset.base64 ?? "");
+
+      setState("success");
+      router.push({ pathname: "/result", params: { imageHash: capture.hash } });
+    } catch (err) {
+      console.error("Failed to pick image:", err);
+      setError("Couldn't open your photos. Check Sorrel has permission in Settings.");
+      setState("failed");
+    }
+  };
+
   const handleRetry = () => {
     setCapturedImage(null);
     setPreFlightResult(null);
@@ -85,85 +134,116 @@ export default function ScanScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Camera Preview */}
-      <CameraView ref={cameraRef} style={styles.camera} facing="back" enableTorch={isTorchOn}>
-        {/* Overlay: Guide Frame */}
-        <View style={styles.overlay}>
-          {/* Top Bar */}
-          <View style={styles.topBar}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.topButton}>
-              <Text style={styles.topButtonText}>←</Text>
-            </TouchableOpacity>
+      {/* The camera fills the screen and the controls sit on top as a
+          sibling, rather than as its children. Children of CameraView render
+          but do not reliably receive touches under the new architecture,
+          which leaves every control dead while the preview looks fine. */}
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing="back"
+        enableTorch={isTorchOn}
+      />
 
-            <TouchableOpacity onPress={() => {}} style={styles.topButton}>
-              <Text style={styles.topButtonText}>⚙️</Text>
-            </TouchableOpacity>
+      {/* pointerEvents="box-none" so the empty areas of the overlay do not
+          swallow taps meant for the preview. */}
+      <View style={styles.overlay} pointerEvents="box-none">
+        {/* Top Bar */}
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            onPress={goBack}
+            style={styles.topButton}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={styles.topButtonText}>←</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push("/settings")}
+            style={styles.topButton}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={styles.topButtonText}>⚙️</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Scanning Animation & Guide */}
+        {state === "capturing" || state === "checking" ? (
+          <View style={styles.centerContent} pointerEvents="none">
+            <ActivityIndicator size="large" color={Colors.leaf} style={styles.spinner} />
+            <Text style={styles.scanningText}>Analysing photo…</Text>
           </View>
+        ) : (
+          <View style={styles.centerContent} pointerEvents="none">
+            <CornerGuide position="topLeft" />
+            <View style={styles.spacer} />
+            <CornerGuide position="bottomLeft" />
+          </View>
+        )}
 
-          {/* Scanning Animation & Guide */}
-          {state === "capturing" || state === "checking" ? (
-            <View style={styles.centerContent}>
-              <ActivityIndicator size="large" color={Colors.leaf} style={styles.spinner} />
-              <Text style={styles.scanningText}>Analyzing photo…</Text>
+        {/* Status Bar */}
+        <View style={styles.statusBar} pointerEvents="none">
+          {state === "failed" && preFlightResult ? (
+            <View style={styles.failureBox}>
+              {preFlightResult.failureReasons.map((reason, idx) => (
+                <Text key={idx} style={styles.failureText}>
+                  • {reason}
+                </Text>
+              ))}
+            </View>
+          ) : error ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : (
-            <View style={styles.centerContent}>
-              {/* Corner guides */}
-              <CornerGuide position="topLeft" />
-              <View style={styles.spacer} />
-              <CornerGuide position="bottomLeft" />
-            </View>
-          )}
-
-          {/* Status Bar */}
-          <View style={styles.statusBar}>
-            {state === "failed" && preFlightResult ? (
-              <View style={styles.failureBox}>
-                {preFlightResult.failureReasons.map((reason, idx) => (
-                  <Text key={idx} style={styles.failureText}>
-                    • {reason}
-                  </Text>
-                ))}
-              </View>
-            ) : error ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            ) : (
-              <Text style={styles.helpText}>Frame the plant clearly • Good lighting helps</Text>
-            )}
-          </View>
-
-          {/* Bottom Controls */}
-          <View style={styles.bottomBar}>
-            {/* Torch Button */}
-            <TouchableOpacity onPress={toggleTorch} style={styles.controlButton}>
-              <Text style={styles.controlButtonText}>{isTorchOn ? "🔦" : "🔫"}</Text>
-            </TouchableOpacity>
-
-            {/* Shutter Button */}
-            <TouchableOpacity
-              onPress={handleCapture}
-              disabled={state !== "idle" && state !== "failed"}
-              style={[styles.shutterButton, state !== "idle" && state !== "failed" && styles.shutterDisabled]}
-            >
-              <View style={styles.shutterInner} />
-            </TouchableOpacity>
-
-            {/* Photo Library Button */}
-            <TouchableOpacity style={styles.controlButton}>
-              <Text style={styles.controlButtonText}>📷</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Retry Button */}
-          {state === "failed" && (
-            <View style={styles.retryBox}>
-              <Button label="Retry" onPress={handleRetry} />
-            </View>
+            <Text style={styles.helpText}>Frame the plant clearly • Good lighting helps</Text>
           )}
         </View>
-      </CameraView>
+
+        {/* Bottom Controls */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            onPress={toggleTorch}
+            style={styles.controlButton}
+            accessibilityRole="button"
+            accessibilityLabel={isTorchOn ? "Turn torch off" : "Turn torch on"}
+          >
+            {/* The off state was a pistol emoji. */}
+            <Text style={styles.controlButtonText}>{isTorchOn ? "🔦" : "💡"}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleCapture}
+            disabled={!canCapture}
+            style={[styles.shutterButton, !canCapture && styles.shutterDisabled]}
+            accessibilityRole="button"
+            accessibilityLabel="Take photo"
+          >
+            <View style={styles.shutterInner} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handlePickFromLibrary}
+            disabled={!canCapture}
+            style={styles.controlButton}
+            accessibilityRole="button"
+            accessibilityLabel="Choose a photo from your library"
+          >
+            <Text style={styles.controlButtonText}>🖼️</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Retry Button */}
+        {state === "failed" && (
+          <View style={styles.retryBox}>
+            <Button label="Retry" onPress={handleRetry} />
+          </View>
+        )}
+      </View>
     </View>
   );
 }
