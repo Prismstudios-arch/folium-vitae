@@ -16,6 +16,7 @@ import { CareCard } from "@components/CareCard";
 import { usePlant } from "@hooks/usePlants";
 import { getCareGuide } from "@services/careDatabase";
 import { SavedPlant, CareGuide, getDisplayName } from "@domain/plant";
+import { updatePlant, deletePlant } from "@services/database";
 
 export default function PlantDetailScreen() {
   const router = useRouter();
@@ -41,23 +42,56 @@ export default function PlantDetailScreen() {
     }
   }, [plant]);
 
-  const handleSave = () => {
-    // TODO: Save changes
-    setIsEditing(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!plant || saving) return;
+
+    setSaving(true);
+    try {
+      await updatePlant(plant.id, {
+        // Empty strings mean "cleared", not "unset" — store undefined so the
+        // field genuinely empties rather than saving a blank string.
+        nickname: editData.nickname?.trim() || undefined,
+        location: editData.location?.trim() || undefined,
+        notes: editData.notes?.trim() || undefined,
+      });
+
+      setIsEditing(false);
+    } catch (err) {
+      console.error("Failed to save plant:", err);
+      // Stay in edit mode so the user's typing is not thrown away.
+      Alert.alert("Couldn't save", "Your changes are still here. Try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = () => {
-    Alert.alert("Delete Plant", `Remove ${plant ? getDisplayName(plant) : "this plant"} from your collection?`, [
-      { text: "Cancel", onPress: () => {} },
-      {
-        text: "Delete",
-        onPress: () => {
-          // TODO: Delete plant
-          router.back();
+    if (!plant) return;
+
+    Alert.alert(
+      "Delete plant",
+      `Remove ${getDisplayName(plant)} from your collection? This also removes its photos and watering history.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deletePlant(plant.id);
+              router.back();
+            } catch (err) {
+              console.error("Failed to delete plant:", err);
+              // Do not navigate away — leaving the screen would imply it
+              // worked, and the plant would still be in the list.
+              Alert.alert("Couldn't delete", `${getDisplayName(plant)} is still in your collection.`);
+            }
+          },
         },
-        style: "destructive",
-      },
-    ]);
+      ]
+    );
   };
 
   if (loading) {

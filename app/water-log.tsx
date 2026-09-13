@@ -13,52 +13,40 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
-
-interface WaterLog {
-  id: string;
-  date: string;
-  amount: "light" | "moderate" | "heavy";
-  notes?: string;
-  createdAt: string;
-}
+import { WaterLog, WaterAmount } from "@domain/plant";
+import { fetchWaterLogs, addWaterLog, deleteWaterLog } from "@services/database";
 
 export default function WaterLogScreen() {
   const router = useRouter();
-  const { plantId, plantName } = useLocalSearchParams();
+  const { plantId, plantName } = useLocalSearchParams<{
+    plantId: string;
+    plantName?: string;
+  }>();
+
   const [logs, setLogs] = useState<WaterLog[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedAmount, setSelectedAmount] = useState<"light" | "moderate" | "heavy">("moderate");
+  const [selectedAmount, setSelectedAmount] = useState<WaterAmount>(WaterAmount.Moderate);
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
-    loadWaterLogs();
-  }, []);
+    void loadWaterLogs();
+  }, [plantId]);
 
   const loadWaterLogs = async () => {
+    if (!plantId) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      // TODO: Load from backend API
-      const mockLogs: WaterLog[] = [
-        {
-          id: "log-1",
-          date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-          amount: "moderate",
-          notes: "Plant looked dry",
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: "log-2",
-          date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-          amount: "heavy",
-          notes: "Summer watering",
-          createdAt: new Date().toISOString(),
-        },
-      ];
-      setLogs(mockLogs);
+      setLogs(await fetchWaterLogs(plantId));
     } catch (error) {
-      Alert.alert("Error", "Failed to load watering logs");
+      console.error("Failed to load watering logs:", error);
+      Alert.alert("Couldn't load history", "Your watering history is saved but wouldn't open.");
     } finally {
       setLoading(false);
     }
@@ -72,60 +60,75 @@ export default function WaterLogScreen() {
   };
 
   const handleAddLog = async () => {
+    if (!plantId || saving) return;
+
+    setSaving(true);
     try {
-      // TODO: Save to backend
-      const newLog: WaterLog = {
-        id: "log-" + Date.now(),
-        date: selectedDate.toISOString(),
+      const saved = await addWaterLog(plantId, {
+        date: selectedDate,
         amount: selectedAmount,
-        notes: notes || undefined,
-        createdAt: new Date().toISOString(),
-      };
+        notes: notes.trim() || undefined,
+      });
 
-      setLogs([newLog, ...logs]);
+      // Insert in date order rather than at the top — the user can backdate
+      // an entry, and prepending would put it above more recent waterings.
+      setLogs((current) =>
+        [saved, ...current].sort((a, b) => b.date.getTime() - a.date.getTime())
+      );
 
-      // TODO: Schedule next watering reminder based on plant type
-      Alert.alert("Success", `Plant watered on ${selectedDate.toLocaleDateString()}`);
-
-      // Reset form
       setSelectedDate(new Date());
-      setSelectedAmount("moderate");
+      setSelectedAmount(WaterAmount.Moderate);
       setNotes("");
     } catch (error) {
-      Alert.alert("Error", "Failed to save watering log");
+      console.error("Failed to save watering log:", error);
+      Alert.alert("Couldn't save", "That watering wasn't recorded. Try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDeleteLog = (logId: string) => {
-    Alert.alert("Delete Entry", "Are you sure you want to delete this watering log?", [
+    Alert.alert("Delete entry", "Remove this watering from the history?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
-        onPress: () => {
-          // TODO: Delete from backend
-          setLogs(logs.filter((l) => l.id !== logId));
-        },
         style: "destructive",
+        onPress: async () => {
+          const previous = logs;
+          // Remove it immediately, then put it back if the delete fails —
+          // the list should never show a row that is already gone.
+          setLogs(logs.filter((l) => l.id !== logId));
+
+          try {
+            await deleteWaterLog(logId);
+          } catch (error) {
+            console.error("Failed to delete watering log:", error);
+            setLogs(previous);
+            Alert.alert("Couldn't delete", "That entry is still there. Try again.");
+          }
+        },
       },
     ]);
   };
 
-  const getAmountLabel = (amount: string) => {
-    const labels: Record<string, string> = {
-      light: "Light watering",
-      moderate: "Moderate watering",
-      heavy: "Heavy watering",
+  // Entries saved before the amount was recorded genuinely have none, so
+  // these say so rather than assuming a value on the user's behalf.
+  const getAmountLabel = (amount?: WaterAmount) => {
+    const labels: Record<WaterAmount, string> = {
+      [WaterAmount.Light]: "Light watering",
+      [WaterAmount.Moderate]: "Moderate watering",
+      [WaterAmount.Heavy]: "Heavy watering",
     };
-    return labels[amount] || amount;
+    return amount ? labels[amount] : "Watered";
   };
 
-  const getAmountEmoji = (amount: string) => {
-    const emojis: Record<string, string> = {
-      light: "💧",
-      moderate: "💦",
-      heavy: "🌊",
+  const getAmountEmoji = (amount?: WaterAmount) => {
+    const emojis: Record<WaterAmount, string> = {
+      [WaterAmount.Light]: "💧",
+      [WaterAmount.Moderate]: "💦",
+      [WaterAmount.Heavy]: "🌊",
     };
-    return emojis[amount] || "💧";
+    return amount ? emojis[amount] : "💧";
   };
 
   if (loading) {
@@ -174,7 +177,7 @@ export default function WaterLogScreen() {
           {/* Amount Selector */}
           <Text style={styles.amountLabel}>Amount:</Text>
           <View style={styles.amountButtons}>
-            {(["light", "moderate", "heavy"] as const).map((amount) => (
+            {[WaterAmount.Light, WaterAmount.Moderate, WaterAmount.Heavy].map((amount) => (
               <TouchableOpacity
                 key={amount}
                 style={[

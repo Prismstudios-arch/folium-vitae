@@ -216,9 +216,17 @@ export interface PlantPhoto {
   caption?: string;
 }
 
+export enum WaterAmount {
+  Light = "light",
+  Moderate = "moderate",
+  Heavy = "heavy",
+}
+
 export interface WaterLog {
   id: string;
   date: Date;
+  /** Optional: entries logged before this was recorded genuinely have none. */
+  amount?: WaterAmount;
   notes?: string;
 }
 

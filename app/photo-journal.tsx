@@ -9,150 +9,144 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Platform,
 } from "react-native";
 import { useState, useEffect } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
-
-interface PlantPhoto {
-  id: string;
-  url: string;
-  thumbnailUrl: string;
-  caption: string;
-  date: string;
-  uploadedAt: string;
-}
+import { PlantPhoto } from "@domain/plant";
+import { fetchPhotos, addPhoto, deletePhoto } from "@services/database";
+import { hashImage } from "@services/capture";
 
 const { width } = Dimensions.get("window");
 const PHOTO_SIZE = (width - Spacing.default * 3) / 2;
 
 export default function PhotoJournalScreen() {
   const router = useRouter();
-  const { plantId, plantName } = useLocalSearchParams();
+  const { plantId, plantName } = useLocalSearchParams<{
+    plantId: string;
+    plantName?: string;
+  }>();
+
   const [photos, setPhotos] = useState<PlantPhoto[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    loadPhotos();
-  }, []);
+    void loadPhotos();
+  }, [plantId]);
 
   const loadPhotos = async () => {
+    if (!plantId) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      // TODO: Load from backend API
-      const mockPhotos: PlantPhoto[] = [
-        {
-          id: "photo-1",
-          url: "https://via.placeholder.com/400x300",
-          thumbnailUrl: "https://via.placeholder.com/100x100",
-          caption: "First photo - just got it",
-          date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-          uploadedAt: new Date().toISOString(),
-        },
-      ];
-      setPhotos(mockPhotos);
+      setPhotos(await fetchPhotos(plantId));
     } catch (error) {
-      Alert.alert("Error", "Failed to load photos");
+      console.error("Failed to load photos:", error);
+      Alert.alert("Couldn't load photos", "Your journal is saved but wouldn't open.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleAddPhoto = async () => {
+    if (!plantId || uploading) return;
+
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
+        // Needed to fingerprint the image so the same photo is not stored
+        // twice. The picker gives a URI we cannot read the bytes of otherwise.
+        base64: true,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        const image = result.assets[0];
+      if (result.canceled || !result.assets[0]) return;
 
-        // Show caption input dialog
-        promptCaption((caption) => {
-          uploadPhoto(image.uri, caption);
-        });
+      const image = result.assets[0];
+
+      // Alert.prompt is iOS-only — on Android it silently does nothing, and
+      // the photo would never be saved. Captions are optional, so Android
+      // saves straight away rather than being handed a dialog that no-ops.
+      if (Platform.OS === "ios") {
+        Alert.prompt(
+          "Add a note",
+          "Anything worth remembering about this photo?",
+          [
+            { text: "Skip", style: "cancel", onPress: () => void savePhoto(image) },
+            { text: "Save", onPress: (caption) => void savePhoto(image, caption) },
+          ],
+          "plain-text",
+          ""
+        );
+      } else {
+        await savePhoto(image);
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to pick image");
+      console.error("Failed to pick image:", error);
+      Alert.alert("Couldn't open your photos", "Check Sorrel has permission in Settings.");
     }
   };
 
-  const promptCaption = (onCaption: (caption: string) => void) => {
-    let caption = "";
+  const savePhoto = async (image: ImagePicker.ImagePickerAsset, caption?: string) => {
+    if (!plantId) return;
 
-    Alert.prompt(
-      "Photo Caption",
-      "Add a note about this photo (optional)",
-      [
-        {
-          text: "Skip",
-          onPress: () => onCaption(""),
-          style: "cancel",
-        },
-        {
-          text: "Add",
-          onPress: () => onCaption(caption),
-        },
-      ],
-      "plain-text",
-      ""
-    );
-  };
-
-  const uploadPhoto = async (uri: string, caption: string) => {
     setUploading(true);
     try {
-      // TODO: Upload to backend
-      // For now, add to local state
-      const newPhoto: PlantPhoto = {
-        id: "photo-" + Date.now(),
-        url: uri,
-        thumbnailUrl: uri,
-        caption: caption || "Photo from " + new Date().toLocaleDateString(),
-        date: new Date().toISOString(),
-        uploadedAt: new Date().toISOString(),
-      };
+      const saved = await addPhoto(plantId, {
+        dateTaken: new Date(),
+        imagePath: image.uri,
+        imageHash: image.base64 ? await hashImage(image.base64) : image.uri,
+        caption: caption?.trim() || undefined,
+      });
 
-      setPhotos([newPhoto, ...photos]);
-      Alert.alert("Success", "Photo added to your plant's journal");
+      setPhotos((current) =>
+        [saved, ...current].sort((a, b) => b.dateTaken.getTime() - a.dateTaken.getTime())
+      );
     } catch (error) {
-      Alert.alert("Error", "Failed to upload photo");
+      console.error("Failed to save photo:", error);
+      Alert.alert("Couldn't save", "That photo wasn't added. Try again.");
     } finally {
       setUploading(false);
     }
   };
 
   const handleDeletePhoto = (photoId: string) => {
-    Alert.alert("Delete Photo", "Are you sure you want to delete this photo?", [
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
+    Alert.alert("Delete photo", "Remove this photo from the journal?", [
+      { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
-        onPress: () => {
-          // TODO: Delete from backend
-          setPhotos(photos.filter((p) => p.id !== photoId));
-        },
         style: "destructive",
+        onPress: async () => {
+          const previous = photos;
+          setPhotos(photos.filter((p) => p.id !== photoId));
+
+          try {
+            await deletePhoto(photoId);
+          } catch (error) {
+            console.error("Failed to delete photo:", error);
+            setPhotos(previous);
+            Alert.alert("Couldn't delete", "That photo is still there. Try again.");
+          }
+        },
       },
     ]);
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
+  const formatDate = (date: Date) =>
+    date.toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
       year: "numeric",
     });
-  };
 
   if (loading) {
     return (
@@ -194,12 +188,12 @@ export default function PhotoJournalScreen() {
                 onLongPress={() => handleDeletePhoto(item.id)}
               >
                 <Image
-                  source={{ uri: item.thumbnailUrl }}
+                  source={{ uri: item.imagePath }}
                   style={styles.photoImage}
-                  onError={() => console.log("Image load error")}
+                  onError={() => console.warn("Photo failed to load:", item.id)}
                 />
                 <View style={styles.photoInfo}>
-                  <Text style={styles.photoDate}>{formatDate(item.date)}</Text>
+                  <Text style={styles.photoDate}>{formatDate(item.dateTaken)}</Text>
                   {item.caption && (
                     <Text style={styles.photoCaption} numberOfLines={2}>
                       {item.caption}

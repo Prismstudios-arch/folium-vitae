@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SQLite from "expo-sqlite";
-import { SavedPlant, PlantPhoto, WaterLog } from "@domain/plant";
+import { SavedPlant, PlantPhoto, WaterLog, WaterAmount } from "@domain/plant";
 import { generateId } from "@utils/id";
 
 const DB_NAME = "sorrel.db";
@@ -47,13 +47,25 @@ export async function initializeDatabase(): Promise<void> {
         id TEXT PRIMARY KEY,
         plantId TEXT NOT NULL,
         date INTEGER NOT NULL,
+        amount TEXT,
         notes TEXT,
         FOREIGN KEY (plantId) REFERENCES plants(id)
       );
 
       CREATE INDEX IF NOT EXISTS idx_photos_plantId ON photos(plantId);
       CREATE INDEX IF NOT EXISTS idx_waterLogs_plantId ON waterLogs(plantId);
+      CREATE INDEX IF NOT EXISTS idx_waterLogs_date ON waterLogs(date DESC);
     `);
+
+    // CREATE TABLE IF NOT EXISTS does nothing when the table already exists,
+    // so a database created before `amount` was added still lacks the column.
+    // SQLite has no ADD COLUMN IF NOT EXISTS; the duplicate-column error is
+    // the expected outcome on an already-migrated database.
+    try {
+      await db.execAsync(`ALTER TABLE waterLogs ADD COLUMN amount TEXT`);
+    } catch {
+      // Column already present.
+    }
 
     console.log("Database initialized successfully");
   } catch (error) {
@@ -239,7 +251,8 @@ export async function deletePlant(id: string): Promise<void> {
 
 // MARK: - Photo Operations
 
-async function fetchPhotos(plantId: string): Promise<PlantPhoto[]> {
+/** Photo journal for one plant, newest first. */
+export async function fetchPhotos(plantId: string): Promise<PlantPhoto[]> {
   if (!db) throw new Error("Database not initialized");
 
   try {
@@ -253,12 +266,17 @@ async function fetchPhotos(plantId: string): Promise<PlantPhoto[]> {
       dateTaken: new Date(row.dateTaken),
       imagePath: row.imagePath,
       imageHash: row.imageHash,
-      caption: row.caption,
+      caption: row.caption ?? undefined,
     }));
   } catch (error) {
     console.error("Failed to fetch photos:", error);
     throw error;
   }
+}
+
+export async function deletePhoto(id: string): Promise<void> {
+  if (!db) throw new Error("Database not initialized");
+  await db.runAsync(`DELETE FROM photos WHERE id = ?`, [id]);
 }
 
 export async function addPhoto(plantId: string, photo: Omit<PlantPhoto, "id">): Promise<PlantPhoto> {
@@ -282,7 +300,8 @@ export async function addPhoto(plantId: string, photo: Omit<PlantPhoto, "id">): 
 
 // MARK: - Water Log Operations
 
-async function fetchWaterLogs(plantId: string): Promise<WaterLog[]> {
+/** Watering history for one plant, newest first. */
+export async function fetchWaterLogs(plantId: string): Promise<WaterLog[]> {
   if (!db) throw new Error("Database not initialized");
 
   try {
@@ -294,12 +313,18 @@ async function fetchWaterLogs(plantId: string): Promise<WaterLog[]> {
     return result.map((row) => ({
       id: row.id,
       date: new Date(row.date),
-      notes: row.notes,
+      amount: (row.amount as WaterAmount) ?? undefined,
+      notes: row.notes ?? undefined,
     }));
   } catch (error) {
     console.error("Failed to fetch water logs:", error);
     throw error;
   }
+}
+
+export async function deleteWaterLog(id: string): Promise<void> {
+  if (!db) throw new Error("Database not initialized");
+  await db.runAsync(`DELETE FROM waterLogs WHERE id = ?`, [id]);
 }
 
 export async function addWaterLog(plantId: string, log: Omit<WaterLog, "id">): Promise<WaterLog> {
@@ -309,8 +334,8 @@ export async function addWaterLog(plantId: string, log: Omit<WaterLog, "id">): P
 
   try {
     await db.runAsync(
-      `INSERT INTO waterLogs (id, plantId, date, notes) VALUES (?, ?, ?, ?)`,
-      [id, plantId, log.date.getTime(), log.notes || null]
+      `INSERT INTO waterLogs (id, plantId, date, amount, notes) VALUES (?, ?, ?, ?, ?)`,
+      [id, plantId, log.date.getTime(), log.amount ?? null, log.notes || null]
     );
 
     return { id, ...log };

@@ -1,233 +1,58 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  FlatList,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
-import { useState, useEffect, useRef } from "react";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { useRouter } from "expo-router";
 import { Colors, Spacing, Typography } from "@constants/theme";
-import { Button } from "@components/Button";
+import { Button, SecondaryButton } from "@components/Button";
 
-interface Message {
-  id: string;
-  author: "user" | "expert";
-  text: string;
-  timestamp: string;
-  avatar?: string;
-}
-
-interface ExpertTicket {
-  id: string;
-  status: "pending" | "assigned" | "resolved";
-  expertName?: string;
-  expertAvatar?: string;
-  position?: number;
-  estimatedWaitTime?: string;
-  messages: Message[];
-  createdAt: string;
-}
-
+/**
+ * Expert escalation — not yet available.
+ *
+ * This screen previously rendered a fabricated conversation: it invented a
+ * question the user had not asked, then replied a second later as a
+ * "botanist" with canned text. Somebody would reasonably have believed a real
+ * person had answered and acted on it for a plant they care about.
+ *
+ * The feature needs a ticket queue and actual people answering (SPEC 8.2).
+ * Neither exists yet, so this says so plainly instead of simulating it.
+ */
 export default function ExpertEscalationScreen() {
   const router = useRouter();
-  const { plantId, plantName } = useLocalSearchParams();
-  const [ticket, setTicket] = useState<ExpertTicket | null>(null);
-  const [messageText, setMessageText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
-
-  useEffect(() => {
-    loadOrCreateTicket();
-  }, []);
-
-  const loadOrCreateTicket = async () => {
-    setLoading(true);
-    try {
-      // TODO: Load existing ticket or create new one from backend
-      const mockTicket: ExpertTicket = {
-        id: "ticket-" + Date.now(),
-        status: "pending",
-        position: 3,
-        estimatedWaitTime: "2-4 hours",
-        messages: [
-          {
-            id: "msg-1",
-            author: "user",
-            text: "Hi, my plant has yellow leaves. Can you help?",
-            timestamp: new Date(Date.now() - 60000).toISOString(),
-          },
-        ],
-        createdAt: new Date().toISOString(),
-      };
-
-      setTicket(mockTicket);
-    } catch (error) {
-      console.error("Failed to load ticket:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSendMessage = async () => {
-    if (!messageText.trim() || !ticket) return;
-
-    setSending(true);
-    try {
-      const newMessage: Message = {
-        id: "msg-" + Date.now(),
-        author: "user",
-        text: messageText,
-        timestamp: new Date().toISOString(),
-      };
-
-      setTicket({
-        ...ticket,
-        messages: [...ticket.messages, newMessage],
-      });
-
-      setMessageText("");
-
-      // TODO: Send to backend
-      // TODO: Receive response from expert (simulate with delay)
-      setTimeout(() => {
-        const expertReply: Message = {
-          id: "msg-" + (Date.now() + 1),
-          author: "expert",
-          text: "Thanks for providing that information. Let me help you with that. Yellow leaves can indicate overwatering, nutrient deficiency, or pests. Can you tell me...",
-          timestamp: new Date().toISOString(),
-        };
-
-        setTicket((prev) =>
-          prev
-            ? { ...prev, messages: [...prev.messages, expertReply] }
-            : null
-        );
-      }, 1000);
-    } finally {
-      setSending(false);
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={Colors.leaf} style={styles.loader} />
-      </View>
-    );
-  }
-
-  if (!ticket) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Failed to load expert chat</Text>
-        <Button label="Go Back" onPress={() => router.back()} />
-      </View>
-    );
-  }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={100}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
-        <View>
-          <Text style={styles.title}>Expert Help</Text>
-          <Text style={styles.plant}>{plantName}</Text>
-        </View>
-      </View>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Text style={styles.emoji}>🌿</Text>
 
-      {ticket.status === "pending" && (
-        <View style={styles.statusBanner}>
-          <Text style={styles.statusIcon}>⏳</Text>
-          <View style={styles.statusInfo}>
-            <Text style={styles.statusTitle}>Position in Queue: #{ticket.position}</Text>
-            <Text style={styles.statusText}>
-              Estimated wait: {ticket.estimatedWaitTime}
-            </Text>
-          </View>
-        </View>
-      )}
+      <Text style={styles.title}>Ask a human — not ready yet</Text>
 
-      {ticket.status === "assigned" && (
-        <View style={styles.statusBanner}>
-          <Text style={styles.statusIcon}>✅</Text>
-          <View style={styles.statusInfo}>
-            <Text style={styles.statusTitle}>Expert Assigned</Text>
-            <Text style={styles.statusText}>{ticket.expertName}</Text>
-          </View>
-        </View>
-      )}
+      <Text style={styles.body}>
+        When Sorrel isn't sure about a plant, the plan is to let you send it to a
+        real botanist and get an answer back within a day.
+      </Text>
 
-      <FlatList
-        ref={flatListRef}
-        data={ticket.messages}
-        keyExtractor={(item) => item.id}
-        style={styles.messageList}
-        contentContainerStyle={styles.messageContent}
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.messageBubble,
-              item.author === "user"
-                ? styles.userMessage
-                : styles.expertMessage,
-            ]}
-          >
-            <Text style={[
-              styles.messageText,
-              item.author === "user"
-                ? styles.userMessageText
-                : styles.expertMessageText,
-            ]}>
-              {item.text}
-            </Text>
-            <Text style={[
-              styles.timestamp,
-              item.author === "user"
-                ? styles.userTimestamp
-                : styles.expertTimestamp,
-            ]}>
-              {new Date(item.timestamp).toLocaleTimeString()}
-            </Text>
-          </View>
-        )}
-      />
+      <Text style={styles.body}>
+        That needs actual people on the other end, and we haven't built the queue
+        yet. Rather than have the app pretend to connect you to someone, we'd
+        rather tell you it isn't there.
+      </Text>
 
-      <View style={styles.inputArea}>
-        <TextInput
-          style={styles.input}
-          placeholder="Type your message..."
-          placeholderTextColor={Colors.textDisabled}
-          value={messageText}
-          onChangeText={setMessageText}
-          multiline
-          maxLength={500}
-          editable={!sending}
+      <View style={styles.divider} />
+
+      <Text style={styles.sectionTitle}>In the meantime</Text>
+
+      <Text style={styles.body}>
+        When an identification is uncertain, Sorrel shows you its top three
+        candidates and the reasons rather than guessing at one. Comparing those
+        against your plant is usually enough to settle it.
+      </Text>
+
+      <View style={styles.actions}>
+        <Button label="Back to my plant" onPress={() => router.back()} />
+        <SecondaryButton
+          label="Go to My Plants"
+          onPress={() => router.replace("/my-plants")}
+          style={styles.secondaryAction}
         />
-        <TouchableOpacity
-          style={[styles.sendButton, sending && styles.sendButtonDisabled]}
-          onPress={handleSendMessage}
-          disabled={!messageText.trim() || sending}
-        >
-          <Text style={styles.sendIcon}>
-            {sending ? "..." : "➤"}
-          </Text>
-        </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </ScrollView>
   );
 }
 
@@ -236,135 +61,38 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+  content: {
+    padding: Spacing.loose,
+    paddingTop: Spacing.spacious,
   },
-  header: {
-    paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.default,
-    paddingBottom: Spacing.loose,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.glass,
-  },
-  backButton: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.leaf,
-    fontWeight: "600" as any,
-    marginBottom: Spacing.compact,
+  emoji: {
+    fontSize: 44,
+    marginBottom: Spacing.default,
   },
   title: {
-    fontSize: Typography.headline.fontSize,
-    fontWeight: Typography.headline.fontWeight as any,
+    ...Typography.headline,
     color: Colors.textPrimary,
-  },
-  plant: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
-  },
-  statusBanner: {
-    flexDirection: "row",
-    backgroundColor: Colors.glass,
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.default,
-    alignItems: "center",
-    gap: Spacing.default,
-  },
-  statusIcon: {
-    fontSize: 24,
-  },
-  statusInfo: {
-    flex: 1,
-  },
-  statusTitle: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
-    color: Colors.textPrimary,
-  },
-  statusText: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
-  },
-  messageList: {
-    flex: 1,
-  },
-  messageContent: {
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.default,
-  },
-  messageBubble: {
     marginBottom: Spacing.default,
-    maxWidth: "85%",
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.compact,
-    borderRadius: 12,
   },
-  userMessage: {
-    alignSelf: "flex-end",
-    backgroundColor: Colors.leaf,
+  sectionTitle: {
+    ...Typography.subheadline,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.tight,
   },
-  expertMessage: {
-    alignSelf: "flex-start",
+  body: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.default,
+  },
+  divider: {
+    height: 1,
     backgroundColor: Colors.glass,
+    marginVertical: Spacing.loose,
   },
-  messageText: {
-    fontSize: Typography.body.fontSize,
-    lineHeight: 20,
+  actions: {
+    marginTop: Spacing.loose,
   },
-  userMessageText: {
-    color: "#FFFFFF",
-  },
-  expertMessageText: {
-    color: Colors.textPrimary,
-  },
-  timestamp: {
-    fontSize: Typography.caption2.fontSize,
-    marginTop: Spacing.compact,
-  },
-  userTimestamp: {
-    color: "rgba(255, 255, 255, 0.7)",
-  },
-  expertTimestamp: {
-    color: Colors.textDisabled,
-  },
-  inputArea: {
-    flexDirection: "row",
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.default,
-    borderTopWidth: 1,
-    borderTopColor: Colors.glass,
-    gap: Spacing.compact,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: Colors.glass,
-    borderRadius: 24,
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.compact,
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-    maxHeight: 100,
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.leaf,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  sendButtonDisabled: {
-    backgroundColor: Colors.textDisabled,
-  },
-  sendIcon: {
-    fontSize: 20,
-    color: "#FFFFFF",
-  },
-  errorText: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-    textAlign: "center",
-    marginVertical: Spacing.spacious,
+  secondaryAction: {
+    marginTop: Spacing.tight,
   },
 });
