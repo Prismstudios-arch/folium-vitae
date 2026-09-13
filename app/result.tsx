@@ -17,7 +17,10 @@ import { ConfidenceBadge } from "@components/Card";
 import { useIdentification } from "@hooks/useIdentification";
 import { getCapture, toIdentificationImage } from "@services/capture";
 import * as Haptics from "expo-haptics";
-import { ConfidenceBand } from "@domain/plant";
+import { ConfidenceBand, getToxicityText } from "@domain/plant";
+import { CareCard } from "@components/CareCard";
+import { lookupCareGuide } from "@services/careDatabase";
+import { getUserPreferences } from "@services/userPreferences";
 import { createPlant, addPhoto } from "@services/database";
 import { useGoBack } from "@hooks/useGoBack";
 
@@ -47,6 +50,23 @@ export default function ResultScreen() {
 
   const topCandidate = result?.candidates[0];
   const alternatives = result?.candidates.slice(1, 3) || [];
+
+  // Care notes for whatever we landed on, plus whether this user asked to be
+  // warned about toxicity. SPEC §5 wants the care summary and a prominent
+  // toxicity badge here; neither was shown.
+  const care = topCandidate ? lookupCareGuide(topCandidate.scientificName) : null;
+  const [warnAboutToxicity, setWarnAboutToxicity] = useState(true);
+
+  useEffect(() => {
+    getUserPreferences()
+      .then((prefs) => setWarnAboutToxicity(prefs.showToxicityWarnings))
+      .catch(() => {
+        // Default to warning. Failing closed on a safety message is the only
+        // sensible direction.
+      });
+  }, []);
+
+  const toxicityText = care ? getToxicityText(care.guide.toxicity) : null;
 
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -176,6 +196,40 @@ export default function ResultScreen() {
                 Score: {(topCandidate.rawScore * 100).toFixed(0)}%
               </Text>
             </View>
+
+            {/* Toxicity — above the care card, because where you put a plant
+                is decided before how you water it. SPEC §8.4 names burying
+                this as the complaint we are meant to beat. */}
+            {warnAboutToxicity && toxicityText && (
+              <View style={styles.toxicityWarning}>
+                <Text style={styles.toxicityTitle}>⚠️ {toxicityText}</Text>
+                {care?.guide.toxicity.notes && (
+                  <Text style={styles.toxicityNotes}>{care.guide.toxicity.notes}</Text>
+                )}
+                <Text style={styles.toxicityDisclaimer}>
+                  If a pet or child has eaten this, contact a vet or your poison
+                  service. Don't wait on an app.
+                </Text>
+              </View>
+            )}
+
+            {/* Care summary */}
+            {care && (
+              <View style={styles.careSection}>
+                {care.matchedAt === "genus" && (
+                  <Text style={styles.careCaveat}>
+                    These notes are for the {care.guide.scientificName} genus, not
+                    this exact species.
+                  </Text>
+                )}
+                {care.unreviewed && (
+                  <Text style={styles.careCaveat}>
+                    Not yet reviewed by a botanist.
+                  </Text>
+                )}
+                <CareCard guide={care.guide} compactMode={true} />
+              </View>
+            )}
 
             {/* Alternatives */}
             {alternatives.length > 0 && (
@@ -344,6 +398,36 @@ const styles = StyleSheet.create({
   },
   buttonGroup: {
     marginBottom: Spacing.spacious,
+  },
+  toxicityWarning: {
+    backgroundColor: "rgba(160, 82, 45, 0.10)",
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.toxicity,
+    borderRadius: 6,
+    padding: Spacing.default,
+    marginTop: Spacing.loose,
+  },
+  toxicityTitle: {
+    ...Typography.subheadline,
+    color: Colors.toxicity,
+  },
+  toxicityNotes: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    marginTop: Spacing.compact,
+  },
+  toxicityDisclaimer: {
+    ...Typography.caption2,
+    color: Colors.textSecondary,
+    marginTop: Spacing.tight,
+  },
+  careSection: {
+    marginTop: Spacing.loose,
+  },
+  careCaveat: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.tight,
   },
   marginTop: {
     marginTop: Spacing.default,
