@@ -1,14 +1,27 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
+import * as ImageManipulator from "expo-image-manipulator";
+import jpeg from "jpeg-js";
 import { useRef, useCallback, useState } from "react";
+import {
+  analyseGrayscale,
+  toGrayscale,
+  ImageQuality,
+  LightLevel,
+} from "./imageAnalysis";
 
 export type PreFlightResult = {
   isBlurry: boolean;
-  blurConfidence: number;
-  hasPlant: boolean;
-  plantConfidence: number;
-  lightLevel: "veryLow" | "low" | "medium" | "bright";
+  /** Laplacian variance. Higher is sharper. */
+  sharpness: number;
+  lightLevel: LightLevel;
   passes: boolean;
   failureReasons: string[];
+  /**
+   * True when the frame could not be analysed. The photo is allowed through
+   * rather than blocked — but the caller is told the check did not run, so
+   * nothing reports a pass it did not actually verify.
+   */
+  checksSkipped: boolean;
 };
 
 /**
@@ -69,100 +82,124 @@ export function useCamera() {
 // MARK: - Pre-flight Checks
 
 /**
- * Detect blur in an image using simple heuristics
- * (In production, would use Vision framework or ML model)
+ * Width the frame is normalised to before analysis.
+ *
+ * Sharpness is scale-dependent, so a fixed width keeps the threshold
+ * meaningful across devices with different sensors. 96px is enough to
+ * measure edge energy and small enough to decode in JavaScript in a few
+ * milliseconds.
  */
-export async function detectBlur(imageUri: string): Promise<{ isBlurry: boolean; confidence: number }> {
-  // Simplified blur detection
-  // In production, would analyze image sharpness via Laplacian variance
-  // or use native Vision framework capabilities
+const ANALYSIS_WIDTH = 96;
 
-  // For Phase 1, we'll use a basic heuristic
-  // A real implementation would analyze the image data
-  const isBlurry = Math.random() < 0.1; // 90% pass rate for testing
-  const confidence = Math.random() * 0.3; // Low confidence = not blurry
+function base64ToBytes(base64: string): Uint8Array {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const clean = base64.replace(/[^A-Za-z0-9+/]/g, "");
+  const byteLength = Math.floor((clean.length * 3) / 4);
+  const bytes = new Uint8Array(byteLength);
 
-  return { isBlurry, confidence };
+  let byteIndex = 0;
+  for (let i = 0; i < clean.length; i += 4) {
+    const chunk =
+      (alphabet.indexOf(clean[i]) << 18) |
+      (alphabet.indexOf(clean[i + 1]) << 12) |
+      (alphabet.indexOf(clean[i + 2]) << 6) |
+      alphabet.indexOf(clean[i + 3]);
+
+    if (byteIndex < byteLength) bytes[byteIndex++] = (chunk >> 16) & 0xff;
+    if (byteIndex < byteLength) bytes[byteIndex++] = (chunk >> 8) & 0xff;
+    if (byteIndex < byteLength) bytes[byteIndex++] = chunk & 0xff;
+  }
+
+  return bytes;
 }
 
 /**
- * Detect if there's a plant in the image
- * (In production, would use ML classifier)
+ * Decode a small grayscale version of the capture.
+ *
+ * Returns null if the frame cannot be read, so callers can distinguish
+ * "analysed and fine" from "could not analyse" instead of conflating them.
  */
-export async function detectPlant(imageUri: string): Promise<{ hasPlant: boolean; confidence: number }> {
-  // Simplified plant detection
-  // In production, would use Vision framework classification
-  // or Core ML model for plant detection
-
-  // For Phase 1, we'll use a basic heuristic
-  const hasPlant = Math.random() < 0.85; // 85% detection rate for testing
-  const confidence = Math.random() * 0.5 + 0.5; // 50-100% confidence when detected
-
-  return { hasPlant, confidence };
-}
-
-/**
- * Estimate light level from image metadata
- */
-export function estimateLightLevel(
-  exposureDuration?: number,
-  iso?: number
-): "veryLow" | "low" | "medium" | "bright" {
-  // Simple heuristic: assume average conditions
-  // In production, would use actual exposure metadata from camera
-  const level = Math.random();
-
-  if (level < 0.2) return "veryLow";
-  if (level < 0.4) return "low";
-  if (level < 0.7) return "medium";
-  return "bright";
-}
-
-/**
- * Run all pre-flight checks on a captured image
- */
-export async function runPreFlightChecks(imageUri: string): Promise<PreFlightResult> {
+export async function loadAnalysisFrame(
+  imageUri: string
+): Promise<{ gray: Float32Array; width: number; height: number } | null> {
   try {
-    const [blurResult, plantResult] = await Promise.all([
-      detectBlur(imageUri),
-      detectPlant(imageUri),
-    ]);
+    const resized = await ImageManipulator.manipulateAsync(
+      imageUri,
+      [{ resize: { width: ANALYSIS_WIDTH } }],
+      { compress: 1, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+    );
 
-    const lightLevel = estimateLightLevel();
+    if (!resized.base64) return null;
 
-    const failureReasons: string[] = [];
+    const decoded = jpeg.decode(base64ToBytes(resized.base64), { useTArray: true });
 
-    if (blurResult.isBlurry) {
-      failureReasons.push("That came out blurry — hold still and try again");
-    }
-
-    if (!plantResult.hasPlant) {
-      failureReasons.push("Point it at a plant");
-    }
-
-    if (lightLevel === "veryLow") {
-      failureReasons.push("That's too dark — needs a bit more light");
-    }
+    if (!decoded?.data || !decoded.width || !decoded.height) return null;
 
     return {
-      isBlurry: blurResult.isBlurry,
-      blurConfidence: blurResult.confidence,
-      hasPlant: plantResult.hasPlant,
-      plantConfidence: plantResult.confidence,
-      lightLevel,
-      passes: failureReasons.length === 0,
-      failureReasons,
+      gray: toGrayscale(decoded.data, decoded.width * decoded.height),
+      width: decoded.width,
+      height: decoded.height,
     };
   } catch (error) {
-    console.error("Pre-flight checks failed:", error);
+    console.warn("Could not decode frame for analysis:", error);
+    return null;
+  }
+}
+
+export async function analyseCapture(imageUri: string): Promise<ImageQuality | null> {
+  const frame = await loadAnalysisFrame(imageUri);
+  if (!frame) return null;
+
+  return analyseGrayscale(frame.gray, frame.width, frame.height);
+}
+
+/**
+ * Pre-flight checks.
+ *
+ * Two things are checked here and one deliberately is not. Sharpness and
+ * exposure are measurable from the pixels. Whether the frame contains a
+ * plant is not — that needs a classifier we do not ship, and the provider
+ * already returns an is_plant probability which the server enforces. Asking
+ * the user to "point it at a plant" based on a guess would be worse than not
+ * asking at all.
+ */
+export async function runPreFlightChecks(imageUri: string): Promise<PreFlightResult> {
+  const quality = await analyseCapture(imageUri);
+
+  if (!quality) {
+    // Could not analyse. Let the photo through — refusing to scan because
+    // our own check failed would punish the user for our problem — but say
+    // plainly that nothing was verified.
     return {
       isBlurry: false,
-      blurConfidence: 0,
-      hasPlant: true,
-      plantConfidence: 1,
-      lightLevel: "medium",
+      sharpness: 0,
+      lightLevel: LightLevel.Good,
       passes: true,
       failureReasons: [],
+      checksSkipped: true,
     };
   }
+
+  const failureReasons: string[] = [];
+
+  if (quality.isBlurry) {
+    failureReasons.push("That came out blurry — hold still and try again");
+  }
+
+  if (quality.light === LightLevel.TooDark) {
+    failureReasons.push("That's too dark — needs a bit more light");
+  }
+
+  if (quality.light === LightLevel.BlownOut) {
+    failureReasons.push("Too bright to make out — try moving out of direct sun");
+  }
+
+  return {
+    isBlurry: quality.isBlurry,
+    sharpness: quality.sharpness,
+    lightLevel: quality.light,
+    passes: failureReasons.length === 0,
+    failureReasons,
+    checksSkipped: false,
+  };
 }

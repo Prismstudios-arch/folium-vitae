@@ -1,23 +1,17 @@
 /**
- * Simple UUID v4-like ID generator
- * No external dependency needed
+ * Identifier generation.
  */
 
-function randomHex(length: number): string {
-  let result = "";
-  for (let i = 0; i < length; i++) {
-    result += Math.floor(Math.random() * 16).toString(16);
-  }
-  return result;
-}
+import * as Crypto from "expo-crypto";
 
+/**
+ * A v4 UUID from the platform CSPRNG.
+ *
+ * Math.random() is not a suitable source here. These ids key the device
+ * account and every locally stored plant, so a collision merges two people's
+ * collections — and Math.random() is seeded per JS context, which on a fresh
+ * install is far more predictable than it looks.
+ */
 export function generateId(): string {
-  // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-  const part1 = randomHex(8);
-  const part2 = randomHex(4);
-  const part3 = `4${randomHex(3)}`; // Version 4
-  const part4 = randomHex(4);
-  const part5 = randomHex(12);
-
-  return `${part1}-${part2}-${part3}-${part4}-${part5}`;
+  return Crypto.randomUUID();
 }
