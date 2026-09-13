@@ -1,0 +1,21 @@
+{
+  // Cloudflare deployment for the public legal pages.
+  //
+  // These are the documents App Store Connect requires at a reachable URL —
+  // the in-app screens do not satisfy that field. Both are generated from
+  // src/content/legal.ts by `npm run legal:build`, so the page a reviewer
+  // opens always matches the text inside the build.
+  //
+  // Without this file Cloudflare assumes an assets directory of ./dist and
+  // the deploy fails, because our output goes to ./docs.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sorrel",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "directory": "./docs",
+    // Serve /privacy for /privacy.html so the URL in App Store Connect does
+    // not need a file extension.
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}
