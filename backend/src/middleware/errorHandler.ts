@@ -46,8 +46,21 @@ export class VerdureError extends Error implements ApiError {
     return new VerdureError(429, message);
   }
 
+  /**
+   * The request was well-formed but we could not act on it — a photo with no
+   * plant in it, for example. Distinct from 400: the client did nothing wrong.
+   */
+  static unprocessable(message: string, details?: Record<string, any>) {
+    return new VerdureError(422, message, details);
+  }
+
   static internal(message: string = "Internal server error", details?: Record<string, any>) {
     return new VerdureError(500, message, details);
+  }
+
+  /** An upstream dependency is unavailable. Retryable; not the caller's fault. */
+  static serviceUnavailable(message: string = "Service temporarily unavailable") {
+    return new VerdureError(503, message);
   }
 }
 

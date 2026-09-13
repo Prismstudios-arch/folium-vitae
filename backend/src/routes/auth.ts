@@ -1,111 +1,146 @@
 /**
- * Authentication API
- * Phase 2: User registration and login
+ * Authentication routes.
+ *
+ * Anonymous device sign-in is the primary path: the product promises a first
+ * scan with no account (SPEC 9). Email accounts exist so a collection can
+ * survive a new phone.
  */
 
 import { Router, Request, Response } from "express";
+import { asyncHandler, VerdureError } from "../middleware/errorHandler";
+import { requireAuth } from "../middleware/requireAuth";
+import { issueTokens, verifyPassword, verifyToken } from "../services/auth";
+import * as Users from "../models/User";
 import logger from "../utils/logger";
 
 export const authRoutes = Router();
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 8;
+
+function assertValidCredentials(email: unknown, password: unknown): asserts email is string {
+  if (typeof email !== "string" || !EMAIL_PATTERN.test(email)) {
+    throw VerdureError.badRequest("Enter a valid email address");
+  }
+  if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+    throw VerdureError.badRequest(
+      `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
+    );
+  }
+}
+
 /**
  * POST /api/auth/register
- * Register a new user
  */
-authRoutes.post("/register", (req: Request, res: Response) => {
-  try {
-    const { email, password, displayName } = req.body;
+authRoutes.post(
+  "/register",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email, password, displayName } = req.body ?? {};
 
-    // TODO: Validate email format
-    // TODO: Hash password
-    // TODO: Store in database
-    // TODO: Send confirmation email
+    assertValidCredentials(email, password);
 
-    logger.info(`New user registered: ${email}`);
+    if (typeof displayName !== "string" || displayName.trim().length === 0) {
+      throw VerdureError.badRequest("Enter a display name");
+    }
 
-    res.status(201).json({
-      success: true,
-      user: {
-        id: "user-" + Date.now(),
-        email,
-        displayName,
-      },
-    });
-  } catch (error) {
-    logger.error("Registration failed:", error);
-    res.status(500).json({ error: "Registration failed" });
-  }
-});
+    const user = await Users.createWithEmail(email, password, displayName.trim());
+    const tokens = issueTokens({ sub: user.id, plan: user.plan, anonymous: false });
+
+    logger.info(`Registered user ${user.id}`);
+
+    res.status(201).json({ ...tokens, user: Users.toPublicUser(user) });
+  })
+);
 
 /**
  * POST /api/auth/login
- * Login with email/password
  */
-authRoutes.post("/login", (req: Request, res: Response) => {
-  try {
-    const { email, password } = req.body;
+authRoutes.post(
+  "/login",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email, password } = req.body ?? {};
 
-    // TODO: Load user from database
-    // TODO: Verify password hash
-    // TODO: Generate JWT token
+    assertValidCredentials(email, password);
 
-    logger.info(`User logged in: ${email}`);
+    const user = await Users.findByEmail(email);
 
-    res.json({
-      success: true,
-      token: "jwt-token-here",
-      user: {
-        id: "user-1",
-        email,
-      },
-    });
-  } catch (error) {
-    logger.error("Login failed:", error);
-    res.status(401).json({ error: "Invalid credentials" });
-  }
-});
+    // Same message whether the account is missing or the password is wrong —
+    // distinguishing them lets an attacker enumerate registered emails.
+    if (!user?.password_hash || !(await verifyPassword(password, user.password_hash))) {
+      throw VerdureError.unauthorized("Email or password is incorrect");
+    }
+
+    const tokens = issueTokens({ sub: user.id, plan: user.plan, anonymous: false });
+
+    res.json({ ...tokens, user: Users.toPublicUser(user) });
+  })
+);
 
 /**
  * POST /api/auth/login-anonymous
- * Login anonymously (for Phase 1 users)
+ * Device-keyed. No account, no password, no PII.
  */
-authRoutes.post("/login-anonymous", (req: Request, res: Response) => {
-  try {
-    const { deviceId } = req.body;
+authRoutes.post(
+  "/login-anonymous",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { deviceId } = req.body ?? {};
 
-    // TODO: Create or get anonymous user
-    // TODO: Generate session token
+    if (typeof deviceId !== "string" || deviceId.trim().length < 8) {
+      throw VerdureError.badRequest("A device id is required");
+    }
 
-    logger.info(`Anonymous user logged in: ${deviceId}`);
+    const user = await Users.findOrCreateByDevice(deviceId.trim());
+    const tokens = issueTokens({ sub: user.id, plan: user.plan, anonymous: true });
 
-    res.json({
-      success: true,
-      token: "session-token-here",
-      userId: "anon-" + deviceId,
-    });
-  } catch (error) {
-    logger.error("Anonymous login failed:", error);
-    res.status(500).json({ error: "Login failed" });
-  }
-});
+    res.json({ ...tokens, user: Users.toPublicUser(user) });
+  })
+);
 
 /**
  * POST /api/auth/refresh
- * Refresh JWT token
  */
-authRoutes.post("/refresh", (req: Request, res: Response) => {
-  try {
-    const { token } = req.body;
+authRoutes.post(
+  "/refresh",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { refreshToken } = req.body ?? {};
 
-    // TODO: Verify token
-    // TODO: Generate new token
+    if (typeof refreshToken !== "string") {
+      throw VerdureError.badRequest("A refresh token is required");
+    }
 
-    res.json({
-      success: true,
-      token: "new-jwt-token-here",
+    const payload = verifyToken(refreshToken, "refresh");
+
+    // Re-read the user so a plan change or deletion takes effect on refresh
+    // rather than persisting until the old token expires.
+    const user = await Users.findById(payload.sub);
+
+    if (!user) {
+      throw VerdureError.unauthorized("Account no longer exists");
+    }
+
+    const tokens = issueTokens({
+      sub: user.id,
+      plan: user.plan,
+      anonymous: user.email === null,
     });
-  } catch (error) {
-    logger.error("Token refresh failed:", error);
-    res.status(401).json({ error: "Token refresh failed" });
-  }
-});
+
+    res.json({ ...tokens, user: Users.toPublicUser(user) });
+  })
+);
+
+/**
+ * GET /api/auth/me
+ */
+authRoutes.get(
+  "/me",
+  requireAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = await Users.findById(req.auth!.sub);
+
+    if (!user) {
+      throw VerdureError.notFound("User not found");
+    }
+
+    res.json({ user: Users.toPublicUser(user) });
+  })
+);

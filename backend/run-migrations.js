@@ -1,70 +1,94 @@
 /**
- * Migration Runner
- * Reads SQL migration files and executes them against Supabase
+ * Migration runner.
+ *
+ * Applies every .sql file in migrations/ in filename order, inside a
+ * transaction each, and records what ran in schema_migrations so re-running
+ * is safe.
  */
 
-const fs = require('fs');
-const path = require('path');
-const { Pool } = require('pg');
+const fs = require("fs");
+const path = require("path");
+const { Pool } = require("pg");
 
-async function runMigrations() {
+require("dotenv").config();
+
+async function run() {
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
-    console.error('❌ ERROR: DATABASE_URL not found in .env file');
+    console.error("DATABASE_URL is not set (looked in backend/.env)");
     process.exit(1);
   }
 
-  console.log('🚀 Starting migrations...');
-  console.log(`📍 Database: ${connectionString.split('@')[1]}`);
-
   const pool = new Pool({
     connectionString,
-    ssl: { rejectUnauthorized: false }, // Supabase requires SSL
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 15000,
   });
 
-  try {
-    // Read migration file
-    const migrationPath = path.join(__dirname, 'migrations', '001_init_schema.sql');
+  const dir = path.join(__dirname, "migrations");
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
 
-    if (!fs.existsSync(migrationPath)) {
-      console.error(`❌ Migration file not found: ${migrationPath}`);
-      process.exit(1);
+  const client = await pool.connect();
+
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename    TEXT PRIMARY KEY,
+        applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+
+    const { rows } = await client.query("SELECT filename FROM schema_migrations");
+    const applied = new Set(rows.map((r) => r.filename));
+
+    let ran = 0;
+
+    for (const file of files) {
+      if (applied.has(file)) {
+        console.log(`  skip  ${file} (already applied)`);
+        continue;
+      }
+
+      const sql = fs.readFileSync(path.join(dir, file), "utf8");
+
+      try {
+        await client.query("BEGIN");
+        await client.query(sql);
+        await client.query("INSERT INTO schema_migrations (filename) VALUES ($1)", [file]);
+        await client.query("COMMIT");
+        console.log(`  applied ${file}`);
+        ran++;
+      } catch (error) {
+        await client.query("ROLLBACK");
+
+        // 001 was applied by hand through the Supabase SQL editor before this
+        // runner existed. Recognise that and record it rather than failing.
+        if (error.code === "42P07" || error.code === "42710") {
+          await client.query(
+            "INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING",
+            [file]
+          );
+          console.log(`  recorded ${file} (objects already existed)`);
+          continue;
+        }
+
+        console.error(`  FAILED  ${file}: ${error.message}`);
+        throw error;
+      }
     }
 
-    const sql = fs.readFileSync(migrationPath, 'utf8');
-
-    // Connect to database
-    const client = await pool.connect();
-    console.log('✅ Connected to database');
-
-    // Execute migration
-    console.log('⏳ Running migrations...');
-    await client.query(sql);
-
-    client.release();
-    console.log('✅ Migrations completed successfully!');
-    console.log('📊 Database tables created:');
-    console.log('   • users');
-    console.log('   • user_preferences');
-    console.log('   • user_stats');
-    console.log('   • plants');
-    console.log('   • photos');
-    console.log('   • water_logs');
-    console.log('   • diagnoses');
-    console.log('   • expert_tickets');
-    console.log('   • messages');
-    console.log('   • watering_reminders');
-    console.log('   • subscriptions');
-    console.log('   • identifications');
-    console.log('   • audit_logs');
-
-  } catch (error) {
-    console.error('❌ Migration failed:', error.message);
-    process.exit(1);
+    console.log(ran > 0 ? `\nDone — ${ran} migration(s) applied.` : "\nDone — already up to date.");
   } finally {
+    client.release();
     await pool.end();
   }
 }
 
-runMigrations();
+run().catch((error) => {
+  console.error("Migration run failed:", error.message);
+  process.exit(1);
+});

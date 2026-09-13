@@ -13,20 +13,26 @@
  * - Expert support queue
  */
 
+// Must be the first import. ES module imports are evaluated before any
+// statement in this file, and db.ts / auth.ts read process.env at module
+// load — so a dotenv.config() call further down would run too late and they
+// would see an empty environment.
+import "dotenv/config";
+
 import express, { Express, Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import dotenv from "dotenv";
 import logger from "./utils/logger";
-import { errorHandler, asyncHandler } from "./middleware/errorHandler";
+import { errorHandler } from "./middleware/errorHandler";
+import { checkDatabaseHealth, closePool } from "./db";
 import { authRoutes } from "./routes/auth";
 import { preferencesRoutes } from "./routes/preferences";
 import { quotaRoutes } from "./routes/quota";
 import { plantsRoutes } from "./routes/plants";
 import { notificationsRoutes } from "./routes/notifications";
-
-dotenv.config();
+import { identifyRoutes } from "./routes/identify";
+import { isProviderConfigured } from "./services/identifyProvider";
 
 const app: Express = express();
 const PORT = process.env.PORT || 3000;
@@ -82,27 +88,33 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Health & Status
 // ============================
 
-app.get("/health", (req: Request, res: Response) => {
-  res.json({
-    status: "ok",
-    service: "verdure-api",
+app.get("/health", async (_req: Request, res: Response) => {
+  // Reports the database, not just the process. A server that is up but
+  // cannot reach Postgres is not healthy, and saying "ok" would hide the
+  // only failure that matters.
+  const database = await checkDatabaseHealth();
+
+  res.status(database.connected ? 200 : 503).json({
+    status: database.connected ? "ok" : "degraded",
+    service: "folium-vitae-api",
     version: "2.0.0",
     environment: NODE_ENV,
+    database,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
 });
 
-app.get("/api/status", (req: Request, res: Response) => {
+app.get("/api/status", (_req: Request, res: Response) => {
   res.json({
     apiVersion: "v1",
     features: {
+      // Reports what is actually wired, not what is planned. An honest
+      // status endpoint is the first place to look when the app misbehaves.
       authentication: true,
-      preferences_sync: true,
       quota_management: true,
-      push_notifications: true,
-      revenueCat_subscriptions: !!process.env.REVENUECAT_API_KEY,
-      kindwise_api: !!process.env.KINDWISE_API_KEY,
+      identification: isProviderConfigured(),
+      revenuecat_subscriptions: Boolean(process.env.REVENUECAT_API_KEY),
     },
     environment: NODE_ENV,
   });
@@ -113,6 +125,7 @@ app.get("/api/status", (req: Request, res: Response) => {
 // ============================
 
 app.use("/api/auth", authRoutes);
+app.use("/api/identify", identifyRoutes);
 app.use("/api/preferences", preferencesRoutes);
 app.use("/api/quota", quotaRoutes);
 app.use("/api/plants", plantsRoutes);
@@ -141,41 +154,50 @@ app.use(errorHandler);
 // Server Startup
 // ============================
 
-const server = app.listen(PORT, () => {
-  logger.info(`Verdure API running on port ${PORT} (${NODE_ENV})`);
-  logger.info(`Health check: http://localhost:${PORT}/health`);
+const server = app.listen(PORT, async () => {
+  logger.info(`Folium Vitae API listening on ${PORT} (${NODE_ENV})`);
 
-  if (NODE_ENV === "development") {
-    logger.info("Debug mode: ON");
-    logger.info("API Status: http://localhost:${PORT}/api/status");
+  // Prove the database is reachable at boot rather than discovering it on
+  // the first user request. A bad DATABASE_URL should be obvious in the
+  // deploy log, not in a 500 an hour later.
+  const database = await checkDatabaseHealth();
+
+  if (database.connected) {
+    logger.info(`Database connected (${database.latencyMs}ms)`);
+  } else {
+    logger.error(`DATABASE UNREACHABLE: ${database.error}`);
   }
 
-  // Log startup checks
-  const checks = {
-    database: process.env.DATABASE_URL ? "✓" : "✗",
-    kindwise_api: process.env.KINDWISE_API_KEY ? "✓" : "✗ (use mock)",
-    revenuecat: process.env.REVENUECAT_API_KEY ? "✓" : "✗",
-    jwt_secret: process.env.JWT_SECRET ? "✓" : "✗",
-  };
-
-  logger.info("Startup checks:", checks);
+  if (!isProviderConfigured()) {
+    logger.warn(
+      "KINDWISE_API_KEY is not set — /api/identify will return 503. " +
+        "It will not serve fabricated results."
+    );
+  }
 });
 
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  logger.info("SIGTERM signal received: closing HTTP server");
-  server.close(() => {
-    logger.info("HTTP server closed");
+// Graceful shutdown: stop accepting connections, then drain the pool, so
+// in-flight queries finish instead of being cut off mid-transaction.
+async function shutdown(signal: string): Promise<void> {
+  logger.info(`${signal} received, shutting down`);
+
+  server.close(async () => {
+    try {
+      await closePool();
+    } catch (error) {
+      logger.error("Error closing database pool:", error);
+    }
     process.exit(0);
   });
-});
 
-process.on("SIGINT", () => {
-  logger.info("SIGINT signal received: closing HTTP server");
-  server.close(() => {
-    logger.info("HTTP server closed");
-    process.exit(0);
-  });
-});
+  // Don't hang forever if a connection refuses to close.
+  setTimeout(() => {
+    logger.warn("Shutdown timed out, forcing exit");
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
 
 export default app;

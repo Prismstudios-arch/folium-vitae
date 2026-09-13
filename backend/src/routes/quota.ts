@@ -1,172 +1,74 @@
 /**
- * Quota API
- * Phase 2: Server-side quota tracking
- * Lifts Phase 1's 7 scans/day limit
+ * Quota routes.
+ *
+ * The count lives server-side because a client-side counter is defeated by
+ * reinstalling the app or moving the device clock (SPEC 6).
+ *
+ * There is deliberately no endpoint here that lets a client set its own plan.
+ * Entitlements arrive from RevenueCat webhooks, so premium is never decided
+ * by a boolean the caller controls.
  */
 
 import { Router, Request, Response } from "express";
-import logger from "../utils/logger";
+import { asyncHandler, VerdureError } from "../middleware/errorHandler";
+import { requireAuth, requireSelf } from "../middleware/requireAuth";
+import * as Users from "../models/User";
+import { PLAN_QUOTAS } from "../models/User";
 
 export const quotaRoutes = Router();
 
-interface QuotaInfo {
-  userId: string;
-  used: number;
-  limit: number;
-  remaining: number;
-  resetsAt: string;
-  planType: "free" | "pro" | "premium";
-}
-
-const PLAN_LIMITS = {
-  free: 7,        // Phase 1 limit
-  pro: 50,        // $4.99/month
-  premium: 1000,  // $9.99/month
-};
+quotaRoutes.use(requireAuth);
 
 /**
  * GET /api/quota/:userId
- * Get current quota information
  */
-quotaRoutes.get("/:userId", (req: Request, res: Response) => {
-  try {
-    const { userId } = req.params;
-
-    // TODO: Load from database with plan info
-    const planType: "free" | "pro" | "premium" = "free";
-    const limit = PLAN_LIMITS[planType];
-
-    // TODO: Load actual used count for today
-    const used = 0;
-
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-
-    const quota: QuotaInfo = {
-      userId,
-      used,
-      limit,
-      remaining: Math.max(0, limit - used),
-      resetsAt: tomorrow.toISOString(),
-      planType,
-    };
-
-    res.json(quota);
-  } catch (error) {
-    logger.error("Failed to get quota:", error);
-    res.status(500).json({ error: "Failed to get quota" });
-  }
-});
+quotaRoutes.get(
+  "/:userId",
+  requireSelf,
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json(await Users.getQuota(req.params.userId));
+  })
+);
 
 /**
  * POST /api/quota/:userId/consume
- * Consume one scan credit
+ *
+ * Claims one credit. Returns 429 when the caller is at their cap, with the
+ * reset time, because "you're out" without "until when" is the behaviour the
+ * product is positioned against (SPEC 9).
  */
-quotaRoutes.post("/:userId/consume", (req: Request, res: Response) => {
-  try {
-    const { userId } = req.params;
+quotaRoutes.post(
+  "/:userId/consume",
+  requireSelf,
+  asyncHandler(async (req: Request, res: Response) => {
+    const state = await Users.consumeQuota(req.params.userId);
 
-    // TODO: Verify user hasn't hit daily limit
-    // TODO: Increment usage counter in database
-    // TODO: Log for analytics
+    if (!state) {
+      const current = await Users.getQuota(req.params.userId);
 
-    logger.info(`Quota consumed for user ${userId}`);
+      throw VerdureError.tooManyRequests(
+        `Daily limit reached. Your ${current.limit} scans reset at midnight.`
+      );
+    }
 
-    res.json({
-      success: true,
-      message: "Scan credit consumed",
-    });
-  } catch (error) {
-    logger.error("Failed to consume quota:", error);
-    res.status(500).json({ error: "Failed to consume quota" });
-  }
-});
+    res.json(state);
+  })
+);
 
 /**
- * POST /api/quota/:userId/upgrade
- * Upgrade user plan
+ * GET /api/quota/:userId/plans
+ * What each tier allows, so the paywall renders real numbers.
  */
-quotaRoutes.post("/:userId/upgrade", (req: Request, res: Response) => {
-  try {
-    const { userId } = req.params;
-    const { planType, paymentMethodId } = req.body;
-
-    // TODO: Validate plan type
-    // TODO: Process payment (Stripe)
-    // TODO: Update user plan in database
-    // TODO: Send confirmation email
-
-    logger.info(`User ${userId} upgraded to ${planType} plan`);
-
+quotaRoutes.get(
+  "/:userId/plans",
+  requireSelf,
+  asyncHandler(async (_req: Request, res: Response) => {
     res.json({
-      success: true,
-      plan: planType,
-      message: "Plan upgraded successfully",
+      plans: [
+        { id: "free", name: "Free", scansPerDay: PLAN_QUOTAS.free },
+        { id: "pro", name: "Pro", scansPerDay: PLAN_QUOTAS.pro },
+        { id: "premium", name: "Premium", scansPerDay: null }, // null = unlimited
+      ],
     });
-  } catch (error) {
-    logger.error("Failed to upgrade plan:", error);
-    res.status(500).json({ error: "Failed to upgrade plan" });
-  }
-});
-
-/**
- * GET /api/quota/pricing
- * Get available plans and pricing
- */
-quotaRoutes.get("/", (req: Request, res: Response) => {
-  try {
-    const plans = [
-      {
-        id: "free",
-        name: "Free",
-        price: 0,
-        currency: "USD",
-        interval: null,
-        scansPerDay: 7,
-        features: [
-          "7 scans per day",
-          "Basic plant database",
-          "Care guides",
-          "My Plants collection",
-          "Ads included",
-        ],
-      },
-      {
-        id: "pro",
-        name: "Pro",
-        price: 4.99,
-        currency: "USD",
-        interval: "month",
-        scansPerDay: 50,
-        features: [
-          "50 scans per day",
-          "All basic features",
-          "Disease detection",
-          "No ads",
-          "Email support",
-        ],
-      },
-      {
-        id: "premium",
-        name: "Premium",
-        price: 9.99,
-        currency: "USD",
-        interval: "month",
-        scansPerDay: null,
-        features: [
-          "Unlimited scans",
-          "All Pro features",
-          "Expert escalation",
-          "Priority support",
-          "Early access to new features",
-        ],
-      },
-    ];
-
-    res.json({ plans });
-  } catch (error) {
-    logger.error("Failed to get pricing:", error);
-    res.status(500).json({ error: "Failed to get pricing" });
-  }
-});
+  })
+);
