@@ -19,9 +19,7 @@
     "express-rate-limit": "^7.0.0",
     "helmet": "^7.0.0",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.23.0",
-    "pino": "^8.16.1",
-    "uuid": "^9.0.0"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

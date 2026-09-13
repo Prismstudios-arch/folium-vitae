@@ -1,16 +1,21 @@
 /**
- * Sorrel Backend API
- * Phase 2: Complete production-ready server
+ * Sorrel API.
  *
- * Features:
- * - User authentication (JWT + anonymous)
- * - Preferences synchronization
- * - Server-side quota tracking
- * - Push notification scheduling
- * - Plant collection management
- * - RevenueCat subscription integration
- * - Disease detection
- * - Expert support queue
+ * Deliberately small. It exists to do the things the app cannot do safely
+ * for itself:
+ *
+ *  /api/auth      device-keyed and email sign-in, JWT issuing
+ *  /api/identify  proxy to the vision provider, keeping the key off the
+ *                 device and enforcing quota where a client cannot edit it
+ *  /api/diagnose  health assessment, Premium only
+ *  /api/quota     server-side scan allowance
+ *  /api/webhooks  RevenueCat entitlements — the only thing that sets a plan
+ *
+ * There is no plants, preferences or notifications route. The app keeps the
+ * collection in local SQLite and works offline, so those endpoints existed
+ * only as stubs returning fabricated data, unauthenticated, and were removed
+ * rather than left to be found. Cloud backup of a collection is a real gap
+ * and wants building as its own slice, against a client that uses it.
  */
 
 // Must be the first import. ES module imports are evaluated before any
@@ -27,10 +32,7 @@ import logger from "./utils/logger";
 import { errorHandler } from "./middleware/errorHandler";
 import { checkDatabaseHealth, closePool } from "./db";
 import { authRoutes } from "./routes/auth";
-import { preferencesRoutes } from "./routes/preferences";
 import { quotaRoutes } from "./routes/quota";
-import { plantsRoutes } from "./routes/plants";
-import { notificationsRoutes } from "./routes/notifications";
 import { identifyRoutes } from "./routes/identify";
 import { webhookRoutes } from "./routes/webhooks";
 import { diagnoseRoutes } from "./routes/diagnose";
@@ -135,10 +137,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/identify", identifyRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/diagnose", diagnoseRoutes);
-app.use("/api/preferences", preferencesRoutes);
 app.use("/api/quota", quotaRoutes);
-app.use("/api/plants", plantsRoutes);
-app.use("/api/notifications", notificationsRoutes);
 
 // ============================
 // Error Handling
