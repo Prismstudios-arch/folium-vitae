@@ -1,4 +1,14 @@
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  Share,
+} from "react-native";
 import { useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Colors, Spacing, Typography } from "@constants/theme";
@@ -6,7 +16,10 @@ import { Button, SecondaryButton } from "@components/Button";
 import { ConfidenceBadge } from "@components/Card";
 import { useIdentification } from "@hooks/useIdentification";
 import { getCapture, toIdentificationImage } from "@services/capture";
-import { IdentificationResult, CalibratedConfidence } from "@domain/plant";
+import * as Haptics from "expo-haptics";
+import { ConfidenceBand } from "@domain/plant";
+import { createPlant, addPhoto } from "@services/database";
+import { useGoBack } from "@hooks/useGoBack";
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -15,6 +28,7 @@ export default function ResultScreen() {
   const capture = imageHash ? getCapture(imageHash) : undefined;
   const imageUri = capture?.uri;
 
+  const goBack = useGoBack("/");
   const { identify, identifying, result, confidence, error } = useIdentification();
   const [hasIdentified, setHasIdentified] = useState(false);
 
@@ -34,11 +48,80 @@ export default function ResultScreen() {
   const topCandidate = result?.candidates[0];
   const alternatives = result?.candidates.slice(1, 3) || [];
 
+  const [saving, setSaving] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
+
+  /**
+   * Actually write the plant to the collection.
+   *
+   * This button previously only navigated home, so identifying a plant and
+   * tapping Save did nothing at all — the single most important action in
+   * the app was a no-op.
+   */
+  const handleSave = async () => {
+    if (!topCandidate || !confidence || saving) return;
+
+    setSaving(true);
+    try {
+      const plant = await createPlant({
+        scientificName: topCandidate.scientificName,
+        commonNames: topCandidate.commonNames,
+        identificationDate: new Date(),
+        confidenceBand: confidence.band,
+        rawScore: confidence.rawScore,
+        calibratedScore: confidence.calibratedScore,
+        sortOrder: 0,
+        isFavorited: false,
+      });
+
+      // Keep the photo that produced the identification as the first entry
+      // in the journal. Best effort — losing it must not lose the plant.
+      if (capture) {
+        try {
+          await addPhoto(plant.id, {
+            dateTaken: capture.takenAt,
+            imagePath: capture.uri,
+            imageHash: capture.hash,
+          });
+        } catch (err) {
+          console.warn("Saved the plant but not its photo:", err);
+        }
+      }
+
+      setSavedId(plant.id);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      console.error("Failed to save plant:", err);
+      Alert.alert("Couldn't save", "That plant wasn't added to your collection. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!topCandidate || !confidence) return;
+
+    // Honest about uncertainty even in a share. Passing off a "not sure"
+    // as a firm identification is the thing this product is against.
+    const hedge =
+      confidence.band === ConfidenceBand.Confident
+        ? "Identified with"
+        : confidence.band === ConfidenceBand.Probably
+          ? "Probably"
+          : "Best guess:";
+
+    await Share.share({
+      message:
+        `${hedge} ${topCandidate.commonNames[0] ?? topCandidate.scientificName} ` +
+        `(${topCandidate.scientificName})\n\nIdentified with Sorrel.`,
+    });
+  };
+
   return (
     <ScrollView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={goBack}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
       </View>
@@ -111,9 +194,18 @@ export default function ResultScreen() {
 
             {/* Action Buttons */}
             <View style={styles.buttonGroup}>
-              <Button label="Save to My Plants" onPress={() => router.push("/")} />
-              <SecondaryButton label="Share" onPress={() => {}} style={styles.marginTop} />
-              <TouchableOpacity onPress={() => router.back()} style={styles.marginTop}>
+              {savedId ? (
+                <Button
+                  label="View in My Plants"
+                  onPress={() => router.push({ pathname: "/plant-detail", params: { id: savedId } })}
+                />
+              ) : (
+                <Button label="Save to My Plants" onPress={handleSave} loading={saving} />
+              )}
+
+              <SecondaryButton label="Share" onPress={handleShare} style={styles.marginTop} />
+
+              <TouchableOpacity onPress={goBack} style={styles.marginTop}>
                 <Text style={styles.link}>Not right? Try again</Text>
               </TouchableOpacity>
             </View>

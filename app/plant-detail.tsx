@@ -212,12 +212,36 @@ export default function PlantDetailScreen() {
               </View>
             ))
           )}
-          <Button label="Log Watering" onPress={() => {}} variant="secondary" style={styles.marginTop} />
+          <Button
+            label="Log watering"
+            onPress={() =>
+              router.push({
+                pathname: "/water-log",
+                params: { plantId: plant.id, plantName: getDisplayName(plant) },
+              })
+            }
+            variant="secondary"
+            style={styles.marginTop}
+          />
+        </View>
+
+        {/* Photo journal */}
+        <View style={styles.section}>
+          <Button
+            label="Photo journal"
+            onPress={() =>
+              router.push({
+                pathname: "/photo-journal",
+                params: { plantId: plant.id, plantName: getDisplayName(plant) },
+              })
+            }
+            variant="secondary"
+          />
         </View>
 
         {/* Danger Zone */}
         <View style={styles.dangerZone}>
-          <Button label="Delete Plant" onPress={handleDelete} style={styles.deleteButton} />
+          <Button label="Delete plant" onPress={handleDelete} style={styles.deleteButton} />
         </View>
       </View>
     </ScrollView>
@@ -386,6 +410,9 @@ const styles = StyleSheet.create({
     color: Colors.textDisabled,
     textAlign: "center",
     paddingVertical: Spacing.default,
+  },
+  section: {
+    marginBottom: Spacing.loose,
   },
   dangerZone: {
     marginTop: Spacing.spacious,
