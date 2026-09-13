@@ -51,7 +51,7 @@
       ]
     ],
     "extra": {
-      "verdureApiUrl": "https://folium-vitae-production.up.railway.app"
+      "apiUrl": "https://folium-vitae-production-c68c.up.railway.app"
     }
   }
 }
