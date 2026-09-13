@@ -41,10 +41,13 @@ export const SUPPORT_EMAIL = "sorrelaiplant@outlook.com";
  * exist as well so the paywall can satisfy Guideline 3.1.2 and so the text is
  * readable offline.
  */
-const LEGAL_SITE = "https://jonnywilsonnn2012-maker.github.io/folium-vitae";
+// Cloudflare Pages, built from docs/ on every push. The extension is omitted
+// deliberately: Pages 308-redirects /privacy.html to /privacy, and the
+// canonical form is what belongs in App Store Connect.
+const LEGAL_SITE = "https://sorrel-34s.pages.dev";
 
-export const PRIVACY_POLICY_URL = `${LEGAL_SITE}/privacy.html`;
-export const TERMS_URL = `${LEGAL_SITE}/terms.html`;
+export const PRIVACY_POLICY_URL = `${LEGAL_SITE}/privacy`;
+export const TERMS_URL = `${LEGAL_SITE}/terms`;
 
 /** Apple's own subscription management page. Never a link of our own. */
 export const MANAGE_SUBSCRIPTION_URL = "https://apps.apple.com/account/subscriptions";
