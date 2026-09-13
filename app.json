@@ -17,24 +17,23 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sorrel.app",
+      "bundleIdentifier": "com.prismstudios.sorrel",
       "infoPlist": {
         "NSCameraUsageDescription": "Sorrel uses your camera to identify plants from photos.",
-        "NSPhotoLibraryUsageDescription": "Sorrel uses your photo library to identify plants you have already photographed.",
-        "NSPhotoLibraryAddOnlyUsageDescription": "Sorrel saves photos of your plants to your library.",
-        "NSLocationWhenInUseUsageDescription": "Optional. Your rough location lets Sorrel tailor care advice to your climate and season."
+        "NSPhotoLibraryUsageDescription": "Sorrel uses your photo library to identify plants you have already photographed."
       }
     },
     "android": {
-      "package": "com.sorrel.app",
+      "package": "com.prismstudios.sorrel",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0C2A1F"
       },
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -46,7 +45,9 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Sorrel uses your camera to identify plants from photos."
+          "cameraPermission": "Sorrel uses your camera to identify plants from photos.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       [
