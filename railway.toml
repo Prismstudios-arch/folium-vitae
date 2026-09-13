@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+buildCommand = "cd backend && npm ci --omit=dev"
+
+[deploy]
+startCommand = "cd backend && npm run dev"
+healthcheckPath = "/health"
+restartPolicyMaxRetries = 5
