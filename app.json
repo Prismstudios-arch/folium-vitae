@@ -65,7 +65,8 @@
       ]
     ],
     "extra": {
-      "apiUrl": "https://folium-vitae-production-c68c.up.railway.app"
+      "apiUrl": "https://folium-vitae-production-c68c.up.railway.app",
+      "revenueCatPublicKey": "appl_oFUAdIkyOXQLsIBAaZbXKpBTjiq"
     }
   }
 }
