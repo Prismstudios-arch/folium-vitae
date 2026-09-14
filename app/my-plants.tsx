@@ -9,247 +9,280 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { useEffect, useState, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useRouter, useFocusEffect } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
+import { Icon } from "@components/Icon";
+import { ScreenHeader, HeaderIconButton } from "@components/ScreenHeader";
+import { useGoBack } from "@hooks/useGoBack";
 import { usePlants } from "@hooks/usePlants";
+import { cancelWateringReminder } from "@services/wateringReminders";
 import { SavedPlant, getDisplayName, getMostRecentPhoto } from "@domain/plant";
 
-type SortBy = "name" | "date" | "recent";
+type SortBy = "name" | "added" | "photographed";
+
+const SORTS: Array<{ id: SortBy; label: string }> = [
+  { id: "name", label: "Name" },
+  { id: "added", label: "Recently added" },
+  { id: "photographed", label: "Recently photographed" },
+];
 
 export default function MyPlantsScreen() {
   const router = useRouter();
+  const goBack = useGoBack("/");
   const { plants, loading, error, loadPlants, removePlant } = usePlants();
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<SortBy>("name");
-  const [filteredPlants, setFilteredPlants] = useState<SavedPlant[]>([]);
+  const [sortBy, setSortBy] = useState<SortBy>("added");
 
-  useEffect(() => {
-    loadPlants();
-  }, []);
-
-  // Filter and sort plants
-  useEffect(() => {
-    let result = plants;
-
-    // Search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (p) =>
-          p.nickname?.toLowerCase().includes(query) ||
-          p.scientificName.toLowerCase().includes(query) ||
-          p.commonNames.some((n) => n.toLowerCase().includes(query))
-      );
-    }
-
-    // Sort
-    switch (sortBy) {
-      case "date":
-        result = [...result].sort((a, b) => {
-          const dateA = a.acquisitionDate || new Date();
-          const dateB = b.acquisitionDate || new Date();
-          return dateB.getTime() - dateA.getTime();
-        });
-        break;
-      case "recent":
-        result = [...result].sort((a, b) => {
-          const photoA = getMostRecentPhoto(a)?.dateTaken || new Date(0);
-          const photoB = getMostRecentPhoto(b)?.dateTaken || new Date(0);
-          return photoB.getTime() - photoA.getTime();
-        });
-        break;
-      case "name":
-      default:
-        result = [...result].sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b)));
-    }
-
-    setFilteredPlants(result);
-  }, [plants, searchQuery, sortBy]);
-
-  // Reload whenever the screen comes back into view. Without this the list
-  // only loads once on mount, so a plant saved from the result screen is
-  // missing here until the app restarts — which reads exactly like the save
-  // having failed.
+  // Refresh on every visit, quietly. The hook already loads on mount; this
+  // used to load a second time and flash a full-screen spinner every time
+  // you came back from a plant.
   useFocusEffect(
     useCallback(() => {
-      void loadPlants();
+      void loadPlants({ silent: true });
     }, [loadPlants])
   );
 
-  const handleDelete = (plant: SavedPlant) => {
-    // This sits on a small button in a grid, where a mis-tap is easy, and it
-    // is not recoverable. Plant detail already confirms; this did not.
+  const visible = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    const matched = query
+      ? plants.filter(
+          (p) =>
+            p.nickname?.toLowerCase().includes(query) ||
+            p.scientificName.toLowerCase().includes(query) ||
+            p.commonNames.some((n) => n.toLowerCase().includes(query))
+        )
+      : plants;
+
+    const sorted = [...matched];
+    switch (sortBy) {
+      case "added":
+        // "Added" sorted by acquisitionDate, which nothing ever sets — so
+        // every comparison was between two fresh new Date() calls and the
+        // order came out effectively random.
+        sorted.sort((a, b) => b.identificationDate.getTime() - a.identificationDate.getTime());
+        break;
+      case "photographed":
+        sorted.sort(
+          (a, b) =>
+            (getMostRecentPhoto(b)?.dateTaken.getTime() ?? 0) -
+            (getMostRecentPhoto(a)?.dateTaken.getTime() ?? 0)
+        );
+        break;
+      default:
+        sorted.sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b)));
+    }
+    return sorted;
+  }, [plants, searchQuery, sortBy]);
+
+  // Press and hold, rather than a red × on every photo: the grid is for
+  // looking at plants, and a delete button on each tile invited mis-taps.
+  const handleLongPress = (plant: SavedPlant) => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
     Alert.alert(
-      "Delete plant",
-      `Remove ${getDisplayName(plant)} from your collection? This also removes its photos and watering history.`,
+      `Delete ${getDisplayName(plant)}?`,
+      "This also removes its photos and watering history. It can't be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
           onPress: () => {
-            removePlant(plant.id).catch((err) => {
-              console.error("Failed to delete plant:", err);
-              Alert.alert("Couldn't delete", `${getDisplayName(plant)} is still in your collection.`);
-            });
+            removePlant(plant.id)
+              .then(() => cancelWateringReminder(plant.id))
+              .catch((err) => {
+                console.error("Failed to delete plant:", err);
+                Alert.alert("Couldn't delete", `${getDisplayName(plant)} is still in your collection.`);
+              });
           },
         },
       ]
     );
   };
 
-  const handlePlantPress = (plant: SavedPlant) => {
-    router.push({
-      pathname: "/plant-detail",
-      params: { id: plant.id },
-    });
-  };
+  const openPlant = (plant: SavedPlant) =>
+    router.push({ pathname: "/plant-detail", params: { id: plant.id } });
 
-  if (loading) {
+  const header = (
+    <ScreenHeader
+      onBack={goBack}
+      backLabel="Home"
+      title="My Plants"
+      subtitle={plants.length > 0 ? `${plants.length} plant${plants.length === 1 ? "" : "s"}` : undefined}
+      right={<HeaderIconButton icon="plus" label="Identify a plant" onPress={() => router.push("/scan")} />}
+    />
+  );
+
+  if (loading && plants.length === 0) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color={Colors.leaf} />
+        {header}
+        <View style={styles.centred}>
+          <ActivityIndicator size="large" color={Colors.leaf} />
+        </View>
       </View>
     );
   }
 
-  if (error) {
+  if (error && plants.length === 0) {
     return (
       <View style={styles.container}>
-        <Text style={styles.errorText}>{error.message}</Text>
-        <Button label="Try Again" onPress={loadPlants} style={styles.marginTop} />
+        {header}
+        <View style={styles.centred}>
+          <Text style={styles.stateTitle}>Your plants didn't load</Text>
+          <Text style={styles.stateBody}>They're still saved on this phone. Try again.</Text>
+          <Button label="Try again" onPress={() => void loadPlants()} style={styles.stateButton} />
+        </View>
       </View>
     );
   }
 
   if (plants.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyIcon}>🌱</Text>
-        <Text style={styles.emptyTitle}>No plants yet</Text>
-        <Text style={styles.emptySubtitle}>Scan your first plant to get started</Text>
-        <Button label="Scan a Plant" onPress={() => router.push("/scan")} style={styles.marginTop} />
+      <View style={styles.container}>
+        {header}
+        <View style={styles.centred}>
+          <View style={styles.emptyIcon}>
+            <Icon name="leaf.fill" size={30} />
+          </View>
+          <Text style={styles.stateTitle}>No plants yet</Text>
+          <Text style={styles.stateBody}>
+            Identify a plant and save it, and it'll live here with its watering log and photos.
+          </Text>
+          <Button label="Identify a plant" onPress={() => router.push("/scan")} style={styles.stateButton} />
+        </View>
       </View>
     );
   }
 
+  // The lead plant gets the full width, the rest a two-column grid beneath
+  // it (DESIGN.md: "lead with a large hero card, then 2 columns").
+  const [lead, ...rest] = visible;
+
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>My Plants</Text>
-        <Text style={styles.count}>{filteredPlants.length} plant{filteredPlants.length !== 1 ? "s" : ""}</Text>
-      </View>
+      <FlatList
+        data={rest}
+        keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={styles.gridRow}
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <>
+            {header}
 
-      {/* Search */}
-      <View style={styles.searchContainer}>
-        <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search plants..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholderTextColor={Colors.textDisabled}
-        />
-      </View>
+            <View style={styles.search}>
+              <Icon name="magnifyingglass" size={16} color={Colors.textSecondary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search your plants"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholderTextColor={Colors.textDisabled}
+                clearButtonMode="while-editing"
+                returnKeyType="search"
+              />
+            </View>
 
-      {/* Sort Buttons */}
-      <View style={styles.sortContainer}>
-        <SortButton label="Name" active={sortBy === "name"} onPress={() => setSortBy("name")} />
-        <SortButton label="Added" active={sortBy === "date"} onPress={() => setSortBy("date")} />
-        <SortButton label="Recent" active={sortBy === "recent"} onPress={() => setSortBy("recent")} />
-      </View>
+            <FlatList
+              horizontal
+              data={SORTS}
+              keyExtractor={(item) => item.id}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.sorts}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.sort, sortBy === item.id && styles.sortActive]}
+                  onPress={() => setSortBy(item.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: sortBy === item.id }}
+                >
+                  <Text style={[styles.sortText, sortBy === item.id && styles.sortTextActive]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
 
-      {/* Grid */}
-      {filteredPlants.length === 0 ? (
-        <View style={styles.noResults}>
-          <Text style={styles.noResultsText}>No plants match "{searchQuery}"</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredPlants}
-          renderItem={({ item }) => <PlantGridItem plant={item} onPress={handlePlantPress} onDelete={handleDelete} />}
-          keyExtractor={(item) => item.id}
-          numColumns={2}
-          columnWrapperStyle={styles.gridRow}
-          scrollEnabled={true}
-          contentContainerStyle={styles.gridContainer}
-        />
-      )}
-
-      {/* Add Button */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push("/scan")}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
+            {lead ? (
+              <PlantTile plant={lead} onPress={openPlant} onLongPress={handleLongPress} hero />
+            ) : (
+              <Text style={styles.noResults}>No plants match "{searchQuery.trim()}"</Text>
+            )}
+          </>
+        }
+        renderItem={({ item }) => (
+          <PlantTile plant={item} onPress={openPlant} onLongPress={handleLongPress} />
+        )}
+        ListFooterComponent={
+          visible.length > 0 ? (
+            <Text style={styles.hint}>Press and hold a plant to delete it.</Text>
+          ) : null
+        }
+      />
     </View>
   );
 }
 
-interface PlantGridItemProps {
+function PlantTile({
+  plant,
+  onPress,
+  onLongPress,
+  hero = false,
+}: {
   plant: SavedPlant;
   onPress: (plant: SavedPlant) => void;
-  onDelete: (plant: SavedPlant) => void;
-}
-
-function PlantGridItem({ plant, onPress, onDelete }: PlantGridItemProps) {
-  const coverPhoto = getMostRecentPhoto(plant);
+  onLongPress: (plant: SavedPlant) => void;
+  hero?: boolean;
+}) {
+  const cover = getMostRecentPhoto(plant);
 
   return (
-    <TouchableOpacity style={styles.gridItem} onPress={() => onPress(plant)}>
-      {coverPhoto ? (
-        <Image
-          // imagePath arrives as a full file:// URI — the database resolves
-          // the stored relative path. Prefixing another scheme produced
-          // file://file:///… and every thumbnail silently failed to load.
-          source={{ uri: coverPhoto.imagePath }}
-          style={styles.gridImage}
-          resizeMode="cover"
-        />
+    <TouchableOpacity
+      style={[styles.tile, hero ? styles.tileHero : styles.tileGrid]}
+      onPress={() => onPress(plant)}
+      onLongPress={() => onLongPress(plant)}
+      activeOpacity={0.9}
+      accessibilityRole="button"
+      accessibilityLabel={getDisplayName(plant)}
+      accessibilityHint="Press and hold to delete"
+    >
+      {cover ? (
+        <Image source={{ uri: cover.imagePath }} style={StyleSheet.absoluteFill} resizeMode="cover" />
       ) : (
-        <View style={[styles.gridImage, styles.noImage]}>
-          <Text style={styles.noImageIcon}>🌿</Text>
+        <View style={[StyleSheet.absoluteFill, styles.tilePlaceholder]}>
+          <Icon name="leaf.fill" size={hero ? 40 : 30} color={Colors.leafLight} />
         </View>
       )}
 
-      {/* Overlay */}
-      <View style={styles.overlay}>
-        <Text style={styles.plantName}>{getDisplayName(plant)}</Text>
-        {plant.location && <Text style={styles.location}>{plant.location}</Text>}
+      {/* A gradient fade for legibility over any photo, as DESIGN.md
+          specifies — not a grey band across the bottom. */}
+      <LinearGradient
+        colors={["transparent", "rgba(0, 0, 0, 0.62)"]}
+        style={styles.tileFade}
+        pointerEvents="none"
+      />
+
+      <View style={styles.tileLabel} pointerEvents="none">
+        <Text style={[styles.tileName, hero && styles.tileNameHero]} numberOfLines={1}>
+          {getDisplayName(plant)}
+        </Text>
+        {plant.location ? (
+          <Text style={styles.tileMeta} numberOfLines={1}>
+            {plant.location}
+          </Text>
+        ) : plant.nickname ? (
+          <Text style={styles.tileMeta} numberOfLines={1}>
+            {plant.commonNames[0] ?? plant.scientificName}
+          </Text>
+        ) : null}
       </View>
-
-      {/* Delete Button */}
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => onDelete(plant)}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.deleteButtonText}>×</Text>
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
-}
-
-interface SortButtonProps {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}
-
-function SortButton({ label, active, onPress }: SortButtonProps) {
-  return (
-    <TouchableOpacity
-      style={[styles.sortButton, active && styles.sortButtonActive]}
-      onPress={onPress}
-    >
-      <Text style={[styles.sortButtonText, active && styles.sortButtonTextActive]}>
-        {label}
-      </Text>
     </TouchableOpacity>
   );
 }
@@ -259,180 +292,141 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  emptyContainer: {
+  centred: {
     flex: 1,
-    justifyContent: "center",
     alignItems: "center",
-    backgroundColor: Colors.background,
+    justifyContent: "center",
+    paddingHorizontal: Spacing.loose,
   },
   emptyIcon: {
-    fontSize: 64,
-    marginBottom: Spacing.default,
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: "rgba(45, 88, 66, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.loose,
   },
-  emptyTitle: {
-    fontSize: Typography.headline.fontSize,
-    fontWeight: Typography.headline.fontWeight as any,
+  stateTitle: {
+    ...Typography.headline,
     color: Colors.textPrimary,
-    marginBottom: Spacing.tight,
+    textAlign: "center",
   },
-  emptySubtitle: {
-    fontSize: Typography.body.fontSize,
+  stateBody: {
+    ...Typography.body,
+    lineHeight: 22,
     color: Colors.textSecondary,
-    marginBottom: Spacing.spacious,
+    textAlign: "center",
+    marginTop: Spacing.tight,
   },
-  header: {
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.default,
+  stateButton: {
+    alignSelf: "stretch",
+    marginTop: Spacing.spacious,
   },
-  title: {
-    fontSize: Typography.display.fontSize,
-    fontWeight: Typography.display.fontWeight as any,
-    color: Colors.textPrimary,
+  listContent: {
+    paddingBottom: Spacing.extra,
   },
-  count: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
-    marginTop: Spacing.compact,
-  },
-  searchContainer: {
+  search: {
     flexDirection: "row",
     alignItems: "center",
+    gap: Spacing.tight,
     marginHorizontal: Spacing.default,
-    marginBottom: Spacing.default,
     paddingHorizontal: Spacing.default,
-    backgroundColor: Colors.glass,
-    borderRadius: 8,
     height: 44,
-  },
-  searchIcon: {
-    fontSize: 18,
-    marginRight: Spacing.tight,
-    color: Colors.textSecondary,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glass,
   },
   searchInput: {
     flex: 1,
-    fontSize: Typography.body.fontSize,
+    ...Typography.body,
     color: Colors.textPrimary,
     padding: 0,
   },
-  sortContainer: {
-    flexDirection: "row",
+  sorts: {
     paddingHorizontal: Spacing.default,
-    marginBottom: Spacing.default,
+    paddingVertical: Spacing.default,
     gap: Spacing.tight,
   },
-  sortButton: {
+  sort: {
     paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.compact,
-    borderRadius: 16,
-    backgroundColor: Colors.glass,
+    minHeight: 34,
+    justifyContent: "center",
+    borderRadius: 17,
+    backgroundColor: Colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glass,
   },
-  sortButtonActive: {
+  sortActive: {
     backgroundColor: Colors.leaf,
+    borderColor: Colors.leaf,
   },
-  sortButtonText: {
-    fontSize: Typography.caption1.fontSize,
+  sortText: {
+    ...Typography.caption1,
     color: Colors.textSecondary,
   },
-  sortButtonTextActive: {
+  sortTextActive: {
     color: "#FFFFFF",
     fontWeight: "600",
-  },
-  gridContainer: {
-    paddingHorizontal: Spacing.compact,
-    paddingBottom: Spacing.spacious,
-  },
-  gridRow: {
-    justifyContent: "space-between",
-    marginBottom: Spacing.default,
-  },
-  gridItem: {
-    width: "48%",
-    aspectRatio: 1,
-    borderRadius: 8,
-    overflow: "hidden",
-    backgroundColor: Colors.glass,
-    position: "relative",
-  },
-  gridImage: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: Colors.glass,
-  },
-  noImage: {
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  noImageIcon: {
-    fontSize: 32,
-  },
-  overlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: Spacing.tight,
-    paddingVertical: Spacing.tight,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-  },
-  plantName: {
-    fontSize: Typography.caption1.fontSize,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  location: {
-    fontSize: Typography.caption2.fontSize,
-    color: "rgba(255, 255, 255, 0.8)",
-    marginTop: Spacing.compact,
-  },
-  deleteButton: {
-    position: "absolute",
-    top: Spacing.tight,
-    right: Spacing.tight,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.error,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  deleteButtonText: {
-    fontSize: 24,
-    color: "#FFFFFF",
-    fontWeight: "300",
-  },
-  fab: {
-    position: "absolute",
-    bottom: Spacing.default,
-    right: Spacing.default,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.leaf,
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 5,
-  },
-  fabText: {
-    fontSize: 36,
-    color: "#FFFFFF",
-    marginTop: -2,
   },
   noResults: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  noResultsText: {
-    fontSize: Typography.body.fontSize,
+    ...Typography.body,
     color: Colors.textSecondary,
-  },
-  errorText: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.error,
     textAlign: "center",
+    paddingVertical: Spacing.spacious,
   },
-  marginTop: {
-    marginTop: Spacing.spacious,
+  gridRow: {
+    paddingHorizontal: Spacing.default,
+    gap: Spacing.default,
+    marginBottom: Spacing.default,
+  },
+  tile: {
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: Colors.glass,
+    justifyContent: "flex-end",
+  },
+  tileHero: {
+    height: 220,
+    marginHorizontal: Spacing.default,
+    marginBottom: Spacing.default,
+  },
+  tileGrid: {
+    flex: 1,
+    aspectRatio: 0.8,
+  },
+  tilePlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tileFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "55%",
+  },
+  tileLabel: {
+    padding: Spacing.default,
+  },
+  tileName: {
+    ...Typography.subheadline,
+    color: "#FFFFFF",
+  },
+  tileNameHero: {
+    ...Typography.headline,
+    color: "#FFFFFF",
+  },
+  tileMeta: {
+    ...Typography.caption1,
+    color: "rgba(255, 255, 255, 0.82)",
+    marginTop: 2,
+  },
+  hint: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    marginTop: Spacing.tight,
   },
 });

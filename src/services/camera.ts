@@ -54,14 +54,14 @@ export function useCamera() {
         // The provider downscales anyway and we pay per call by payload, so
         // there is nothing to gain from shipping a full-resolution frame.
         quality: 0.7,
-        // Needed for identification: the proxy forwards bytes, not a file
-        // path it has no way to read.
-        base64: true,
+        // No base64: holdCapture re-encodes from the file, which is also what
+        // strips EXIF. Asking the camera for base64 too held a second,
+        // full-size copy of every photo in memory and threw it away.
         skipProcessing: false,
       });
 
-      if (!photo?.base64) {
-        console.error("Capture returned no image data");
+      if (!photo?.uri) {
+        console.error("Capture returned no image");
         return null;
       }
 

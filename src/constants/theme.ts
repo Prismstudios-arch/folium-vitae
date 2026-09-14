@@ -124,11 +124,11 @@ export const Typography = {
     letterSpacing: 0.3,
   },
 
-  // Button/UI
+  // Button/UI — semibold, as DESIGN.md specifies for the primary CTA.
   button: {
     fontSize: 17,
-    lineHeight: 20,
-    fontWeight: "500" as const,
+    lineHeight: 22,
+    fontWeight: "600" as const,
     letterSpacing: 0,
   },
   controlSmall: {
@@ -179,9 +179,11 @@ export const Haptics = {
 
 export const ComponentStyles = {
   // Button sizes
+  // 44pt is Apple's minimum touch target; primary actions sit comfortably
+  // above it.
   button: {
-    minHeight: 44,
-    borderRadius: 12,
+    minHeight: 52,
+    borderRadius: 14,
     paddingHorizontal: Spacing.default,
   },
 

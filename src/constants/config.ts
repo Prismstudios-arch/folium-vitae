@@ -66,7 +66,7 @@ export const TERMS_URL = `${LEGAL_SITE}/terms`;
 export const MANAGE_SUBSCRIPTION_URL = "https://apps.apple.com/account/subscriptions";
 
 /** Shown on the legal screens so people know how current the text is. */
-export const LEGAL_LAST_UPDATED = "13 September 2026";
+export const LEGAL_LAST_UPDATED = "14 September 2026";
 
 if (!extra.apiUrl) {
   console.warn(

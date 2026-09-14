@@ -3,7 +3,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   Linking,
 } from "react-native";
@@ -12,6 +11,8 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button, SecondaryButton } from "@components/Button";
+import { Icon } from "@components/Icon";
+import { ScreenHeader } from "@components/ScreenHeader";
 import {
   getApiClient,
   ApiError,
@@ -26,9 +27,9 @@ import { useGoBack } from "@hooks/useGoBack";
 type PlanState = "checking" | "free" | "paid" | "unknown";
 
 /**
- * Capturing keeps the camera mounted. The previous version swapped the
- * camera for a spinner the instant the shutter was pressed, unmounting the
- * view while takePictureAsync was still using it.
+ * Capturing keeps the camera mounted. An earlier version swapped the camera
+ * for a spinner the instant the shutter was pressed, unmounting the view
+ * while takePictureAsync was still using it.
  */
 type Phase = "idle" | "capturing" | "analysing";
 
@@ -45,7 +46,7 @@ function describeLikelihood(probability: number): string {
 export default function DiseaseDetectionScreen() {
   const router = useRouter();
   const goBack = useGoBack("/my-plants");
-  const { plantId, plantName } = useLocalSearchParams<{ plantId?: string; plantName?: string }>();
+  const { plantName } = useLocalSearchParams<{ plantId?: string; plantName?: string }>();
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
@@ -68,7 +69,7 @@ export default function DiseaseDetectionScreen() {
         })
         .catch(() => {
           // Offline or not signed in. Let them try — the server enforces the
-          // plan either way, and its answer is shown below.
+          // plan either way, and its answer is shown.
           if (active) setPlanState("unknown");
         });
 
@@ -103,13 +104,7 @@ export default function DiseaseDetectionScreen() {
       // before it leaves the phone.
       const capture = await holdCapture(photo.uri, "");
 
-      setDiagnosis(
-        await getApiClient().diagnose(
-          [toIdentificationImage(capture)],
-          capture.hash,
-          plantId || undefined
-        )
-      );
+      setDiagnosis(await getApiClient().diagnose([toIdentificationImage(capture)], capture.hash));
     } catch (err) {
       const apiError =
         err instanceof ApiError ? err : new ApiError("Something went wrong. Try again.", 0, true);
@@ -124,21 +119,9 @@ export default function DiseaseDetectionScreen() {
     }
   };
 
-  // Every state gets a way out. Only the error state had a Back button, so
-  // the camera, permission and results screens could only be left by a
-  // swipe gesture most people don't know is there.
+  // Every state gets a way out.
   const header = (
-    <View style={styles.header}>
-      <TouchableOpacity
-        onPress={goBack}
-        accessibilityRole="button"
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-      >
-        <Text style={styles.backButton}>← Back</Text>
-      </TouchableOpacity>
-      <Text style={styles.title}>Check plant health</Text>
-      {plantName ? <Text style={styles.subtitle}>{plantName}</Text> : null}
-    </View>
+    <ScreenHeader onBack={goBack} title="Check plant health" subtitle={plantName || undefined} />
   );
 
   if (planState === "checking" || phase === "analysing") {
@@ -160,6 +143,9 @@ export default function DiseaseDetectionScreen() {
       <ScrollView style={styles.container}>
         {header}
         <View style={styles.body}>
+          <View style={styles.featureIcon}>
+            <Icon name="stethoscope" size={30} />
+          </View>
           <Text style={styles.statusTitle}>Health checks are part of Premium</Text>
           <Text style={styles.bodyText}>
             Photograph a leaf that looks wrong and Sorrel suggests the most likely causes, with
@@ -207,6 +193,11 @@ export default function DiseaseDetectionScreen() {
         {header}
 
         <View style={styles.statusContainer}>
+          <Icon
+            name={diagnosis.isHealthy ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"}
+            size={36}
+            color={diagnosis.isHealthy ? Colors.leaf : Colors.toxicity}
+          />
           <Text style={styles.statusTitle}>
             {diagnosis.isHealthy ? "Looks healthy" : "Something looks wrong"}
           </Text>
@@ -261,7 +252,9 @@ export default function DiseaseDetectionScreen() {
       <View style={styles.container}>
         {header}
         <View style={styles.body}>
-          <Text style={styles.icon}>🔍</Text>
+          <View style={styles.featureIcon}>
+            <Icon name="camera.fill" size={30} />
+          </View>
           {permission.canAskAgain ? (
             <>
               <Text style={styles.bodyText}>
@@ -372,28 +365,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  header: {
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.default,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.glass,
-  },
-  backButton: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.leaf,
-    fontWeight: "600" as any,
-    marginBottom: Spacing.compact,
-  },
-  title: {
-    fontSize: Typography.headline.fontSize,
-    fontWeight: Typography.headline.fontWeight as any,
-    color: Colors.textPrimary,
-  },
-  subtitle: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textSecondary,
-    marginTop: Spacing.tight,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -401,22 +372,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.default,
   },
   loadingText: {
+    ...Typography.body,
     marginTop: Spacing.default,
-    fontSize: Typography.body.fontSize,
     color: Colors.textSecondary,
   },
   body: {
-    padding: Spacing.loose,
+    paddingHorizontal: Spacing.loose,
+    paddingTop: Spacing.default,
   },
-  icon: {
-    fontSize: 48,
-    textAlign: "center",
+  featureIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    backgroundColor: "rgba(45, 88, 66, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: Spacing.loose,
   },
   bodyText: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textSecondary,
+    ...Typography.body,
     lineHeight: 22,
+    color: Colors.textSecondary,
     marginBottom: Spacing.default,
   },
   cameraWrap: {
@@ -428,21 +404,19 @@ const styles = StyleSheet.create({
     top: Spacing.default,
     left: Spacing.default,
     right: Spacing.default,
-    backgroundColor: "rgba(12, 42, 31, 0.78)",
-    borderRadius: 10,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    borderRadius: 14,
     padding: Spacing.default,
   },
   tipsTitle: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
+    ...Typography.subheadline,
     color: "#FFFFFF",
     marginBottom: Spacing.compact,
   },
   tip: {
-    fontSize: Typography.body.fontSize,
-    color: "rgba(255, 255, 255, 0.85)",
-    marginBottom: Spacing.tight,
-    lineHeight: 20,
+    ...Typography.body,
+    color: "rgba(255, 255, 255, 0.88)",
+    marginBottom: Spacing.compact,
   },
   footer: {
     paddingHorizontal: Spacing.default,
@@ -450,19 +424,19 @@ const styles = StyleSheet.create({
   },
   statusContainer: {
     alignItems: "center",
-    paddingVertical: Spacing.spacious,
+    gap: Spacing.tight,
+    paddingVertical: Spacing.loose,
     paddingHorizontal: Spacing.default,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.glass,
   },
   statusTitle: {
-    fontSize: Typography.headline.fontSize,
-    fontWeight: Typography.headline.fontWeight as any,
+    ...Typography.headline,
     color: Colors.textPrimary,
-    marginBottom: Spacing.compact,
+    marginBottom: Spacing.tight,
   },
   confidence: {
-    fontSize: Typography.body.fontSize,
+    ...Typography.body,
     color: Colors.textSecondary,
     textAlign: "center",
   },
@@ -471,16 +445,15 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.loose,
   },
   sectionTitle: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
+    ...Typography.headline,
     color: Colors.textPrimary,
-    marginBottom: Spacing.default,
+    marginBottom: Spacing.tight,
   },
-  // A column. This was a row with space-between, which laid the name,
+  // A column. This was once a row with space-between, which laid the name,
   // description and treatment side by side in one squashed line.
   diseaseItem: {
     paddingVertical: Spacing.default,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.glass,
   },
   diseaseHeader: {
@@ -489,10 +462,9 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
   },
   diseaseName: {
+    ...Typography.subheadline,
     flex: 1,
     marginRight: Spacing.default,
-    fontSize: Typography.body.fontSize,
-    fontWeight: "600" as any,
     color: Colors.textPrimary,
   },
   diseaseLikelihood: {
@@ -502,15 +474,16 @@ const styles = StyleSheet.create({
   },
   diseaseDescription: {
     ...Typography.body,
+    lineHeight: 22,
     color: Colors.textSecondary,
-    marginTop: Spacing.compact,
+    marginTop: Spacing.tight,
   },
   treatmentBlock: {
     marginTop: Spacing.default,
   },
   treatmentLabel: {
     ...Typography.caption1,
-    fontWeight: "600" as any,
+    fontWeight: "600",
     color: Colors.textPrimary,
     marginBottom: Spacing.compact,
   },
@@ -519,16 +492,16 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.compact,
   },
   bullet: {
-    fontSize: Typography.body.fontSize,
+    ...Typography.body,
     color: Colors.leaf,
-    marginRight: Spacing.compact,
-    fontWeight: "bold" as any,
+    marginRight: Spacing.tight,
+    fontWeight: "700",
   },
   recommendationText: {
-    fontSize: Typography.body.fontSize,
+    ...Typography.body,
+    lineHeight: 22,
     color: Colors.textPrimary,
     flex: 1,
-    lineHeight: 20,
   },
   caution: {
     ...Typography.caption1,
@@ -539,7 +512,7 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.default,
     padding: Spacing.default,
     backgroundColor: Colors.surface,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   disclaimerText: {
     ...Typography.caption1,

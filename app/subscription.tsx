@@ -26,6 +26,7 @@ import { addTrialLength } from "@services/subscriptionTerms";
 import { scheduleTrialReminder } from "@services/trialReminder";
 import { getApiClient } from "@services/apiClient";
 import { useGoBack } from "@hooks/useGoBack";
+import { Icon } from "@components/Icon";
 
 /**
  * Paywall.
@@ -178,16 +179,28 @@ export default function SubscriptionScreen() {
           accessibilityLabel="Close"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={styles.closeText}>✕</Text>
+          <Icon name="xmark" size={17} color={Colors.textSecondary} weight="semibold" />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Sorrel Premium</Text>
-        <Text style={styles.subtitle}>
-          Unlimited identifications, plus health checks that suggest what's wrong with a plant and
-          what to try first.
-        </Text>
+        <View style={styles.benefits}>
+          <View style={styles.benefit}>
+            <View style={styles.benefitIcon}>
+              <Icon name="infinity" size={18} />
+            </View>
+            <Text style={styles.benefitText}>Unlimited identifications, every day</Text>
+          </View>
+          <View style={styles.benefit}>
+            <View style={styles.benefitIcon}>
+              <Icon name="stethoscope" size={18} />
+            </View>
+            <Text style={styles.benefitText}>
+              Health checks: the likely causes when a plant looks wrong, and what to try first
+            </Text>
+          </View>
+        </View>
 
         <View style={styles.freeNote}>
           <Text style={styles.freeNoteText}>
@@ -310,10 +323,37 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.tight,
   },
   close: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glass,
     alignItems: "center",
     justifyContent: "center",
+  },
+  benefits: {
+    gap: Spacing.default,
+    marginTop: Spacing.default,
+    marginBottom: Spacing.loose,
+  },
+  benefit: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.default,
+  },
+  benefitIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(45, 88, 66, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  benefitText: {
+    ...Typography.bodyLarge,
+    color: Colors.textPrimary,
+    flex: 1,
   },
   closeText: {
     fontSize: 22,

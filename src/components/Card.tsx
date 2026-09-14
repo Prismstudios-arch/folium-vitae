@@ -1,6 +1,8 @@
 import React from "react";
-import { View, StyleSheet, ViewStyle } from "react-native";
-import { Colors, Spacing, ComponentStyles } from "@constants/theme";
+import { View, Text, StyleSheet, ViewStyle } from "react-native";
+import type { SFSymbol } from "expo-symbols";
+import { Colors, Spacing, ComponentStyles, Typography } from "@constants/theme";
+import { Icon } from "./Icon";
 
 interface CardProps {
   children: React.ReactNode;
@@ -16,42 +18,26 @@ export function Card({ children, style, testID }: CardProps) {
   );
 }
 
-// Badge components for confidence and toxicity
+// Badges for confidence and toxicity
 
 interface ConfidenceBadgeProps {
   band: "confident" | "probably" | "notSure";
   testID?: string;
 }
 
-export function ConfidenceBadge({ band, testID }: ConfidenceBadgeProps) {
-  const getBandColor = () => {
-    switch (band) {
-      case "confident":
-        return Colors.confident;
-      case "probably":
-        return Colors.probably;
-      case "notSure":
-        return Colors.notSure;
-    }
-  };
+const BAND: Record<ConfidenceBadgeProps["band"], { label: string; color: string; icon: SFSymbol }> = {
+  confident: { label: "Confident", color: Colors.confident, icon: "checkmark.seal.fill" },
+  probably: { label: "Probably", color: Colors.probably, icon: "questionmark.circle.fill" },
+  notSure: { label: "Not sure", color: Colors.notSure, icon: "questionmark.circle" },
+};
 
-  const getBandLabel = () => {
-    switch (band) {
-      case "confident":
-        return "Confident";
-      case "probably":
-        return "Probably";
-      case "notSure":
-        return "Not sure";
-    }
-  };
+export function ConfidenceBadge({ band, testID }: ConfidenceBadgeProps) {
+  const { label, color, icon } = BAND[band];
 
   return (
-    <View
-      style={[styles.badge, { backgroundColor: getBandColor() }]}
-      testID={testID}
-    >
-      <Text style={styles.badgeText}>{getBandLabel()}</Text>
+    <View style={[styles.badge, { backgroundColor: color }]} testID={testID}>
+      <Icon name={icon} size={14} color="#FFFFFF" weight="semibold" />
+      <Text style={styles.badgeText}>{label}</Text>
     </View>
   );
 }
@@ -62,40 +48,25 @@ interface ToxicityBadgeProps {
   testID?: string;
 }
 
+const TOXIC_TO: Record<ToxicityBadgeProps["type"], { label: string; icon: SFSymbol }> = {
+  cats: { label: "Toxic to cats", icon: "pawprint.fill" },
+  dogs: { label: "Toxic to dogs", icon: "pawprint.fill" },
+  humans: { label: "Toxic to people", icon: "exclamationmark.triangle.fill" },
+};
+
+/** DESIGN.md: sienna, white text, icon and label ("Toxic to cats"). */
 export function ToxicityBadge({ type, level, testID }: ToxicityBadgeProps) {
   if (level === "none") return null;
 
-  const getEmoji = () => {
-    switch (type) {
-      case "cats":
-        return "🐱";
-      case "dogs":
-        return "🐕";
-      case "humans":
-        return "⚠️";
-    }
-  };
-
-  const getLabel = () => {
-    const labels = {
-      cats: "Toxic to cats",
-      dogs: "Toxic to dogs",
-      humans: "Toxic to humans",
-    };
-    return labels[type];
-  };
+  const { label, icon } = TOXIC_TO[type];
 
   return (
     <View style={[styles.badge, styles.toxicityBadge]} testID={testID}>
-      <Text style={styles.badgeText}>
-        {getEmoji()} {getLabel()}
-      </Text>
+      <Icon name={icon} size={12} color="#FFFFFF" weight="semibold" />
+      <Text style={styles.badgeText}>{label}</Text>
     </View>
   );
 }
-
-// Import Text from react-native for badge text
-import { Text } from "react-native";
 
 const styles = StyleSheet.create({
   card: {
@@ -106,15 +77,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: Spacing.tight,
-    paddingVertical: Spacing.tight,
-    borderRadius: 4,
+    paddingVertical: 6,
+    borderRadius: 8,
     alignSelf: "flex-start",
   },
   badgeText: {
+    ...Typography.caption2,
     color: "#FFFFFF",
-    fontWeight: "500",
-    fontSize: 12,
+    fontWeight: "600",
   },
   toxicityBadge: {
     backgroundColor: Colors.toxicity,

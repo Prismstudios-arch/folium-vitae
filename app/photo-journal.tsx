@@ -16,6 +16,8 @@ import { useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
+import { Icon } from "@components/Icon";
+import { ScreenHeader } from "@components/ScreenHeader";
 import { PlantPhoto } from "@domain/plant";
 import { fetchPhotos, addPhoto, deletePhoto } from "@services/database";
 import { fingerprintPhoto } from "@services/photoStorage";
@@ -134,8 +136,6 @@ export default function PhotoJournalScreen() {
             },
             {
               text: "Save",
-              // Annotated so React 19's stricter inference doesn't fall back
-              // to any.
               onPress: (caption?: string) => void savePhoto(asset.uri, fingerprint, dateTaken, caption),
             },
           ],
@@ -165,8 +165,7 @@ export default function PhotoJournalScreen() {
     setSaving(true);
     try {
       // addPhoto copies the file out of the picker's cache, which iOS clears
-      // whenever it likes. Storing the cache URI, as this used to, lost the
-      // photo sooner or later.
+      // whenever it likes.
       const saved = await addPhoto(plantId, {
         dateTaken,
         imagePath: uri,
@@ -215,13 +214,7 @@ export default function PhotoJournalScreen() {
     });
 
   const header = (
-    <View style={styles.header}>
-      <TouchableOpacity onPress={goBack} accessibilityRole="button">
-        <Text style={styles.backButton}>← Back</Text>
-      </TouchableOpacity>
-      <Text style={styles.title}>Photo Journal</Text>
-      {plantName ? <Text style={styles.plantName}>{plantName}</Text> : null}
-    </View>
+    <ScreenHeader onBack={goBack} title="Photo journal" subtitle={plantName || undefined} />
   );
 
   if (loading) {
@@ -247,19 +240,21 @@ export default function PhotoJournalScreen() {
 
   return (
     <View style={styles.container}>
-      {header}
-
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {header}
+
         {photos.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>📸</Text>
+            <View style={styles.emptyIcon}>
+              <Icon name="photo.stack" size={30} />
+            </View>
             <Text style={styles.emptyTitle}>No photos yet</Text>
             <Text style={styles.emptyText}>
               Add a photo every few weeks and you'll be able to see how it has grown.
             </Text>
           </View>
         ) : (
-          <>
+          <View style={styles.gridWrap}>
             <Text style={styles.hint}>Press and hold a photo to delete it.</Text>
             {/* A wrapping grid of Views rather than a FlatList: a virtualised
                 list nested in a ScrollView warns and gains nothing here. */}
@@ -293,12 +288,12 @@ export default function PhotoJournalScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-          </>
+          </View>
         )}
       </ScrollView>
 
       <View style={styles.footer}>
-        <Button label="Add photo" onPress={handleAddPhoto} disabled={saving} loading={saving} />
+        <Button label="Add a photo" onPress={handleAddPhoto} disabled={saving} loading={saving} />
       </View>
     </View>
   );
@@ -312,37 +307,16 @@ const styles = StyleSheet.create({
   loader: {
     marginTop: Spacing.spacious,
   },
-  header: {
-    paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.default,
-    paddingBottom: Spacing.loose,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.glass,
-  },
-  backButton: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.leaf,
-    fontWeight: "600" as any,
-    marginBottom: Spacing.compact,
-  },
-  title: {
-    fontSize: Typography.headline.fontSize,
-    fontWeight: Typography.headline.fontWeight as any,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.compact,
-  },
-  plantName: {
-    fontSize: Typography.subheadline.fontSize,
-    color: Colors.textSecondary,
-  },
   content: {
     flex: 1,
+  },
+  gridWrap: {
     paddingHorizontal: Spacing.default,
   },
   hint: {
-    fontSize: Typography.caption1.fontSize,
+    ...Typography.caption1,
     color: Colors.textSecondary,
-    marginVertical: Spacing.default,
+    marginBottom: Spacing.default,
   },
   grid: {
     flexDirection: "row",
@@ -353,13 +327,11 @@ const styles = StyleSheet.create({
   },
   photoCard: {
     width: PHOTO_SIZE,
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: Colors.glass,
   },
   photoImage: {
     width: "100%",
     height: PHOTO_SIZE,
+    borderRadius: 14,
     backgroundColor: Colors.glass,
   },
   photoMissing: {
@@ -368,47 +340,48 @@ const styles = StyleSheet.create({
     padding: Spacing.default,
   },
   photoMissingText: {
-    fontSize: Typography.caption1.fontSize,
+    ...Typography.caption1,
     color: Colors.textSecondary,
     textAlign: "center",
   },
   photoInfo: {
-    padding: Spacing.compact,
-    backgroundColor: Colors.background,
+    paddingTop: Spacing.tight,
   },
   photoDate: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
-    fontWeight: "600" as any,
-    marginBottom: Spacing.compact,
+    ...Typography.caption1,
+    color: Colors.textPrimary,
+    fontWeight: "600",
   },
   photoCaption: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textPrimary,
-    lineHeight: 16,
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   emptyState: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: Spacing.spacious,
-    marginTop: Spacing.spacious,
-    paddingHorizontal: Spacing.default,
+    paddingVertical: Spacing.extra,
+    paddingHorizontal: Spacing.loose,
   },
-  emptyEmoji: {
-    fontSize: 64,
-    marginBottom: Spacing.default,
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: "rgba(45, 88, 66, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.loose,
   },
   emptyTitle: {
-    fontSize: Typography.headline.fontSize,
-    fontWeight: Typography.headline.fontWeight as any,
+    ...Typography.headline,
     color: Colors.textPrimary,
-    marginBottom: Spacing.compact,
+    marginBottom: Spacing.tight,
   },
   emptyText: {
-    fontSize: Typography.body.fontSize,
+    ...Typography.body,
+    lineHeight: 22,
     color: Colors.textSecondary,
     textAlign: "center",
-    lineHeight: 20,
   },
   footer: {
     paddingHorizontal: Spacing.default,

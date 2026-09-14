@@ -7,12 +7,16 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Image,
 } from "react-native";
 import { useCallback, useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import type { SFSymbol } from "expo-symbols";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
 import { CareCard } from "@components/CareCard";
+import { Icon } from "@components/Icon";
+import { ScreenHeader } from "@components/ScreenHeader";
 import { usePlant } from "@hooks/usePlants";
 import { useGoBack } from "@hooks/useGoBack";
 import { lookupCareGuide, CareLookupResult } from "@services/careDatabase";
@@ -20,7 +24,7 @@ import { Units } from "@services/careFormatting";
 import { getUserPreferences } from "@services/userPreferences";
 import { cancelWateringReminder } from "@services/wateringReminders";
 import { updatePlant, deletePlant } from "@services/database";
-import { SavedPlant, getDisplayName } from "@domain/plant";
+import { SavedPlant, getDisplayName, getMostRecentPhoto } from "@domain/plant";
 
 export default function PlantDetailScreen() {
   const router = useRouter();
@@ -94,8 +98,8 @@ export default function PlantDetailScreen() {
     if (!plant) return;
 
     Alert.alert(
-      "Delete plant",
-      `Remove ${getDisplayName(plant)} from your collection? This also removes its photos and watering history.`,
+      `Delete ${getDisplayName(plant)}?`,
+      "This also removes its photos and watering history. It can't be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -132,63 +136,73 @@ export default function PlantDetailScreen() {
 
   if (error || !plant) {
     return (
-      <View style={[styles.container, styles.centred]}>
-        <Text style={styles.errorText}>{error ? "This plant couldn't be loaded." : "Plant not found"}</Text>
-        <Button label="Go back" onPress={goBack} style={styles.marginTop} />
+      <View style={styles.container}>
+        <ScreenHeader onBack={goBack} backLabel="My Plants" />
+        <View style={styles.centred}>
+          <Text style={styles.stateTitle}>
+            {error ? "This plant couldn't be loaded" : "This plant isn't in your collection"}
+          </Text>
+          <Button label="Back to My Plants" onPress={goBack} style={styles.stateButton} />
+        </View>
       </View>
     );
   }
 
+  const cover = getMostRecentPhoto(plant);
   const genus = care?.guide.scientificName.split(" ")[0];
+  const openWithPlant = (pathname: "/water-log" | "/photo-journal" | "/disease-detection") =>
+    router.push({ pathname, params: { plantId: plant.id, plantName: getDisplayName(plant) } });
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={goBack}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setIsEditing(!isEditing)}
-          accessibilityRole="button"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={styles.editButton}>{isEditing ? "Cancel" : "Edit"}</Text>
-        </TouchableOpacity>
-      </View>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScreenHeader
+        onBack={goBack}
+        backLabel="My Plants"
+        right={
+          <TouchableOpacity
+            onPress={() => setIsEditing(!isEditing)}
+            style={styles.editToggle}
+            accessibilityRole="button"
+          >
+            <Text style={styles.editToggleText}>{isEditing ? "Cancel" : "Edit"}</Text>
+          </TouchableOpacity>
+        }
+      />
+
+      {/* DESIGN.md: the photo is the hero. The plant's own photo leads. */}
+      {cover && !isEditing ? (
+        <Image source={{ uri: cover.imagePath }} style={styles.cover} resizeMode="cover" />
+      ) : null}
 
       <View style={styles.content}>
         {isEditing ? (
-          <View style={styles.editableSection}>
+          <View style={styles.editor}>
+            <Text style={styles.fieldLabel}>Nickname</Text>
             <TextInput
-              style={styles.nicknameInput}
-              placeholder="Plant nickname"
+              style={styles.field}
+              placeholder={plant.commonNames[0] ?? plant.scientificName}
               value={editData.nickname || ""}
               onChangeText={(text) => setEditData({ ...editData, nickname: text })}
               placeholderTextColor={Colors.textDisabled}
             />
-            <Text style={styles.scientificName}>{plant.scientificName}</Text>
 
+            <Text style={styles.fieldLabel}>Where it lives</Text>
             <TextInput
-              style={styles.locationInput}
-              placeholder="Location (e.g., Living room)"
+              style={styles.field}
+              placeholder="e.g. Living room windowsill"
               value={editData.location || ""}
               onChangeText={(text) => setEditData({ ...editData, location: text })}
               placeholderTextColor={Colors.textDisabled}
             />
 
+            <Text style={styles.fieldLabel}>Notes</Text>
             <TextInput
-              style={styles.notesInput}
-              placeholder="Notes about this plant"
+              style={[styles.field, styles.fieldMultiline]}
+              placeholder="Anything worth remembering"
               value={editData.notes || ""}
               onChangeText={(text) => setEditData({ ...editData, notes: text })}
               placeholderTextColor={Colors.textDisabled}
               multiline
-              numberOfLines={4}
             />
 
             <Button
@@ -196,118 +210,135 @@ export default function PlantDetailScreen() {
               onPress={handleSave}
               loading={saving}
               disabled={saving}
-              style={styles.marginTop}
+              style={styles.saveButton}
             />
           </View>
         ) : (
           // Ternaries, not &&: an empty string from the database would render
           // as a bare text node and crash React Native.
-          <View style={styles.viewSection}>
-            <Text style={styles.nickname}>{getDisplayName(plant)}</Text>
+          <View>
+            <Text style={styles.name}>{getDisplayName(plant)}</Text>
             <Text style={styles.scientificName}>{plant.scientificName}</Text>
-            {plant.location ? <Text style={styles.location}>📍 {plant.location}</Text> : null}
 
-            <View style={styles.metaInfo}>
-              {plant.acquisitionDate ? (
-                <Text style={styles.metaText}>
-                  📅 Added {new Date(plant.acquisitionDate).toLocaleDateString()}
-                </Text>
-              ) : null}
-              <Text style={styles.metaText}>
-                🔍 Identified {new Date(plant.identificationDate).toLocaleDateString()}
-              </Text>
+            <View style={styles.facts}>
+              {plant.location ? <Fact icon="mappin.and.ellipse" text={plant.location} /> : null}
+              <Fact
+                icon="camera.viewfinder"
+                text={`Identified ${new Date(plant.identificationDate).toLocaleDateString(undefined, {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}`}
+              />
             </View>
 
-            {plant.notes ? (
-              <View style={styles.notesBox}>
-                <Text style={styles.notesLabel}>Notes</Text>
-                <Text style={styles.notesText}>{plant.notes}</Text>
-              </View>
-            ) : null}
+            {plant.notes ? <Text style={styles.notes}>{plant.notes}</Text> : null}
           </View>
         )}
 
-        {/* Care guide */}
+        {/* Everything you can do with this plant, as rows rather than three
+            stacked grey buttons. */}
+        <View style={styles.actions}>
+          <ActionRow
+            icon="drop.fill"
+            title="Watering log"
+            detail={
+              plant.waterLogs.length === 0
+                ? "Nothing logged yet"
+                : `Last watered ${new Date(plant.waterLogs[0].date).toLocaleDateString(undefined, {
+                    day: "numeric",
+                    month: "short",
+                  })}`
+            }
+            onPress={() => openWithPlant("/water-log")}
+          />
+          <ActionRow
+            icon="photo.stack"
+            title="Photo journal"
+            detail={
+              plant.photos.length === 0
+                ? "No photos yet"
+                : `${plant.photos.length} photo${plant.photos.length === 1 ? "" : "s"}`
+            }
+            onPress={() => openWithPlant("/photo-journal")}
+          />
+          <ActionRow
+            icon="stethoscope"
+            title="Check plant health"
+            detail="Photograph a leaf that looks wrong"
+            onPress={() => openWithPlant("/disease-detection")}
+            last
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>Care</Text>
         {care ? (
           <>
-            <Text style={styles.sectionTitle}>Care Guide</Text>
             {care.matchedAt === "genus" ? (
-              <Text style={styles.careCaveat}>
+              <Text style={styles.caveat}>
                 These notes cover the {genus} genus in general, not this exact species.
               </Text>
             ) : null}
             {care.unreviewed ? (
-              <Text style={styles.careCaveat}>Not yet reviewed by a horticulturist.</Text>
+              <Text style={styles.caveat}>Not yet reviewed by a horticulturist.</Text>
             ) : null}
             <CareCard guide={care.guide} compactMode={true} units={units} />
           </>
         ) : (
-          <View style={styles.noCareGuide}>
-            <Text style={styles.noCareGuideText}>No care notes for this plant yet</Text>
-            <Text style={styles.noCareGuideSubtext}>
+          <View style={styles.noCare}>
+            <Text style={styles.noCareTitle}>No care notes for this plant yet</Text>
+            <Text style={styles.noCareBody}>
               We'd rather show nothing than guess. More plants are being added.
             </Text>
           </View>
         )}
 
-        {/* Water log */}
-        <View style={styles.waterLogSection}>
-          <Text style={styles.sectionTitle}>Water Log</Text>
-          {plant.waterLogs.length === 0 ? (
-            <Text style={styles.emptyText}>No watering records yet</Text>
-          ) : (
-            plant.waterLogs.slice(0, 5).map((log) => (
-              <View key={log.id} style={styles.logEntry}>
-                <Text style={styles.logDate}>{new Date(log.date).toLocaleDateString()}</Text>
-                {log.notes ? <Text style={styles.logNotes}>{log.notes}</Text> : null}
-              </View>
-            ))
-          )}
-          <Button
-            label="Log watering"
-            onPress={() =>
-              router.push({
-                pathname: "/water-log",
-                params: { plantId: plant.id, plantName: getDisplayName(plant) },
-              })
-            }
-            variant="secondary"
-            style={styles.marginTop}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Button
-            label="Photo journal"
-            onPress={() =>
-              router.push({
-                pathname: "/photo-journal",
-                params: { plantId: plant.id, plantName: getDisplayName(plant) },
-              })
-            }
-            variant="secondary"
-          />
-        </View>
-
-        {/* Nothing linked to the health check, so it could never be reached. */}
-        <View style={styles.section}>
-          <Button
-            label="Check plant health"
-            onPress={() =>
-              router.push({
-                pathname: "/disease-detection",
-                params: { plantId: plant.id, plantName: getDisplayName(plant) },
-              })
-            }
-            variant="secondary"
-          />
-        </View>
-
-        <View style={styles.dangerZone}>
-          <Button label="Delete plant" onPress={handleDelete} style={styles.deleteButton} />
-        </View>
+        <TouchableOpacity onPress={handleDelete} style={styles.delete} accessibilityRole="button">
+          <Icon name="trash" size={16} color={Colors.error} />
+          <Text style={styles.deleteText}>Delete this plant</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
+  );
+}
+
+function Fact({ icon, text }: { icon: SFSymbol; text: string }) {
+  return (
+    <View style={styles.fact}>
+      <Icon name={icon} size={15} color={Colors.textSecondary} />
+      <Text style={styles.factText}>{text}</Text>
+    </View>
+  );
+}
+
+function ActionRow({
+  icon,
+  title,
+  detail,
+  onPress,
+  last = false,
+}: {
+  icon: SFSymbol;
+  title: string;
+  detail: string;
+  onPress: () => void;
+  last?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.actionRow, last && styles.actionRowLast]}
+      accessibilityRole="button"
+    >
+      <View style={styles.actionIcon}>
+        <Icon name={icon} size={18} />
+      </View>
+      <View style={styles.actionText}>
+        <Text style={styles.actionTitle}>{title}</Text>
+        <Text style={styles.actionDetail}>{detail}</Text>
+      </View>
+      <Icon name="chevron.right" size={14} color={Colors.textDisabled} weight="semibold" />
+    </TouchableOpacity>
   );
 }
 
@@ -316,185 +347,179 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  scrollContent: {
+    paddingBottom: Spacing.extra,
+  },
   centred: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: Spacing.default,
+    paddingHorizontal: Spacing.loose,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.default,
-  },
-  backButton: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.leaf,
-    fontWeight: "600",
-  },
-  editButton: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.leaf,
-    fontWeight: "600",
-  },
-  content: {
-    paddingHorizontal: Spacing.default,
-    paddingBottom: Spacing.spacious,
-  },
-  editableSection: {
-    backgroundColor: Colors.glass,
-    borderRadius: 8,
-    padding: Spacing.default,
-    marginBottom: Spacing.loose,
-  },
-  viewSection: {
-    marginBottom: Spacing.loose,
-  },
-  nicknameInput: {
-    fontSize: Typography.display.fontSize,
-    fontWeight: Typography.display.fontWeight as any,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.tight,
-    padding: 0,
-  },
-  locationInput: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-    marginTop: Spacing.default,
-    marginBottom: Spacing.default,
-    paddingVertical: Spacing.tight,
-    borderBottomColor: Colors.leaf,
-    borderBottomWidth: 1,
-  },
-  notesInput: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-    marginTop: Spacing.default,
-    borderColor: Colors.leaf,
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: Spacing.tight,
-    minHeight: 100,
-    textAlignVertical: "top",
-  },
-  nickname: {
-    fontSize: Typography.display.fontSize,
-    fontWeight: Typography.display.fontWeight as any,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.compact,
-  },
-  scientificName: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textSecondary,
-    fontStyle: "italic",
-    marginBottom: Spacing.default,
-  },
-  location: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.default,
-  },
-  metaInfo: {
-    backgroundColor: Colors.glass,
-    borderRadius: 8,
-    padding: Spacing.default,
-    marginBottom: Spacing.loose,
-  },
-  metaText: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.compact,
-  },
-  notesBox: {
-    backgroundColor: Colors.glass,
-    borderRadius: 8,
-    padding: Spacing.default,
-    marginBottom: Spacing.loose,
-  },
-  notesLabel: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.tight,
-  },
-  notesText: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-    lineHeight: 22,
-  },
-  sectionTitle: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.default,
-    marginTop: Spacing.loose,
-  },
-  careCaveat: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.tight,
-  },
-  noCareGuide: {
-    backgroundColor: Colors.glass,
-    borderRadius: 8,
-    padding: Spacing.default,
-    marginBottom: Spacing.loose,
-    alignItems: "center",
-  },
-  noCareGuideText: {
-    fontSize: Typography.body.fontSize,
+  stateTitle: {
+    ...Typography.headline,
     color: Colors.textPrimary,
     textAlign: "center",
   },
-  noCareGuideSubtext: {
-    fontSize: Typography.caption1.fontSize,
+  stateButton: {
+    alignSelf: "stretch",
+    marginTop: Spacing.loose,
+  },
+  editToggle: {
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  editToggleText: {
+    ...Typography.bodyLarge,
+    color: Colors.leaf,
+    fontWeight: "600",
+  },
+  cover: {
+    width: "100%",
+    height: 300,
+    backgroundColor: Colors.glass,
+  },
+  content: {
+    paddingHorizontal: Spacing.default,
+    paddingTop: Spacing.loose,
+  },
+  name: {
+    ...Typography.displayLarge,
+    letterSpacing: 0,
+    color: Colors.textPrimary,
+  },
+  scientificName: {
+    ...Typography.bodyLarge,
+    color: Colors.textSecondary,
+    fontStyle: "italic",
+    marginTop: Spacing.compact,
+  },
+  facts: {
+    marginTop: Spacing.default,
+    gap: Spacing.tight,
+  },
+  fact: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.tight,
+  },
+  factText: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+  },
+  notes: {
+    ...Typography.body,
+    lineHeight: 22,
+    color: Colors.textPrimary,
+    marginTop: Spacing.default,
+  },
+  editor: {
+    gap: Spacing.tight,
+  },
+  fieldLabel: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    marginTop: Spacing.tight,
+  },
+  field: {
+    ...Typography.bodyLarge,
+    color: Colors.textPrimary,
+    minHeight: 48,
+    paddingHorizontal: Spacing.default,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.glass,
+    backgroundColor: Colors.surface,
+  },
+  fieldMultiline: {
+    minHeight: 110,
+    paddingTop: Spacing.default,
+    textAlignVertical: "top",
+  },
+  saveButton: {
+    marginTop: Spacing.default,
+  },
+  actions: {
+    marginTop: Spacing.loose,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glass,
+    backgroundColor: Colors.surface,
+  },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.default,
+    minHeight: 64,
+    paddingHorizontal: Spacing.default,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.glass,
+  },
+  actionRowLast: {
+    borderBottomWidth: 0,
+  },
+  actionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(45, 88, 66, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionText: {
+    flex: 1,
+  },
+  actionTitle: {
+    ...Typography.subheadline,
+    color: Colors.textPrimary,
+  },
+  actionDetail: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  sectionTitle: {
+    ...Typography.headline,
+    color: Colors.textPrimary,
+    marginTop: Spacing.spacious,
+    marginBottom: Spacing.default,
+  },
+  caveat: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.tight,
+  },
+  noCare: {
+    padding: Spacing.loose,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: Colors.glass,
+    alignItems: "center",
+  },
+  noCareTitle: {
+    ...Typography.subheadline,
+    color: Colors.textPrimary,
+    textAlign: "center",
+  },
+  noCareBody: {
+    ...Typography.caption1,
     color: Colors.textSecondary,
     marginTop: Spacing.tight,
     textAlign: "center",
   },
-  waterLogSection: {
-    marginTop: Spacing.loose,
-    marginBottom: Spacing.loose,
-  },
-  logEntry: {
-    paddingVertical: Spacing.default,
-    borderBottomColor: Colors.glass,
-    borderBottomWidth: 1,
-  },
-  logDate: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
-    fontWeight: "600",
-  },
-  logNotes: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-    marginTop: Spacing.compact,
-  },
-  emptyText: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    paddingVertical: Spacing.default,
-  },
-  section: {
-    marginBottom: Spacing.default,
-  },
-  dangerZone: {
+  delete: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.tight,
+    minHeight: 48,
     marginTop: Spacing.spacious,
-    paddingTop: Spacing.loose,
-    borderTopColor: Colors.error,
-    borderTopWidth: 1,
   },
-  deleteButton: {
-    backgroundColor: Colors.error,
-  },
-  marginTop: {
-    marginTop: Spacing.default,
-  },
-  errorText: {
-    fontSize: Typography.body.fontSize,
+  deleteText: {
+    ...Typography.bodyLarge,
     color: Colors.error,
-    textAlign: "center",
   },
 });

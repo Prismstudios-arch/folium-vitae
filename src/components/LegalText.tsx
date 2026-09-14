@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from "react-native";
 import { ReactNode } from "react";
-import { useRouter } from "expo-router";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { SUPPORT_EMAIL, LEGAL_LAST_UPDATED } from "@constants/config";
 import { LegalDocument, Block } from "@content/legal";
+import { useGoBack } from "@hooks/useGoBack";
+import { ScreenHeader } from "./ScreenHeader";
 
 /**
  * Renders a legal document from src/content/legal.ts.
@@ -42,13 +43,14 @@ function BlockView({ block }: { block: Block }) {
 
 /** Page wrapper for the legal screens. */
 export function LegalPage({ title, children }: { title: string; children: ReactNode }) {
-  const router = useRouter();
+  // Opened from Settings and the paywall. With no history — a deep link, say
+  // — back goes to Settings rather than doing nothing, which router.back()
+  // did.
+  const goBack = useGoBack("/settings");
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => router.back()} accessibilityRole="button">
-        <Text style={styles.back}>← Back</Text>
-      </TouchableOpacity>
+      <ScreenHeader onBack={goBack} style={styles.header} />
 
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.updated}>Last updated {LEGAL_LAST_UPDATED}</Text>
@@ -105,12 +107,9 @@ export function Highlight({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: Spacing.loose, paddingBottom: Spacing.extra },
-  back: {
-    ...Typography.button,
-    color: Colors.leaf,
-    marginBottom: Spacing.loose,
-  },
+  content: { paddingHorizontal: Spacing.loose, paddingBottom: Spacing.extra },
+  // The page already has side padding; the header's own would double it.
+  header: { paddingHorizontal: 0, marginLeft: -Spacing.compact },
   title: {
     ...Typography.display,
     color: Colors.textPrimary,
@@ -129,6 +128,7 @@ const styles = StyleSheet.create({
   },
   paragraph: {
     ...Typography.body,
+    lineHeight: 22,
     color: Colors.textSecondary,
     marginBottom: Spacing.tight,
   },
@@ -144,6 +144,7 @@ const styles = StyleSheet.create({
   },
   bulletText: {
     ...Typography.body,
+    lineHeight: 22,
     color: Colors.textSecondary,
     flex: 1,
   },
@@ -157,6 +158,7 @@ const styles = StyleSheet.create({
   },
   highlightText: {
     ...Typography.body,
+    lineHeight: 22,
     color: Colors.textPrimary,
   },
   divider: {

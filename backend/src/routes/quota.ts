@@ -47,7 +47,8 @@ quotaRoutes.post(
       const current = await Users.getQuota(req.params.userId);
 
       throw ApiError.tooManyRequests(
-        `Daily limit reached. Your ${current.limit} scans reset at midnight.`
+        `You've used all ${current.limit} of today's identifications. They reset at 00:00 UTC.`,
+        "DAILY_LIMIT"
       );
     }
 

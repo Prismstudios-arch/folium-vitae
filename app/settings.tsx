@@ -28,6 +28,7 @@ import {
   cancelAllWateringReminders,
 } from "@services/wateringReminders";
 import { useGoBack } from "@hooks/useGoBack";
+import { ScreenHeader } from "@components/ScreenHeader";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -198,16 +199,7 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={styles.container}>
       {/* The only way out used to be a link at the very bottom of the page. */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={goBack}
-          accessibilityRole="button"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={styles.backLink}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.screenTitle}>Settings</Text>
-      </View>
+      <ScreenHeader onBack={goBack} backLabel="Home" title="Settings" />
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Subscription</Text>

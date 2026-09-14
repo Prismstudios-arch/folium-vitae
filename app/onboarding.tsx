@@ -4,67 +4,66 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
-  Dimensions,
+  Image,
   Alert,
 } from "react-native";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "expo-router";
-import Animated, { FadeInDown, FadeOutUp } from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import type { SFSymbol } from "expo-symbols";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
+import { Icon } from "@components/Icon";
 import { completeOnboarding, saveUserPreferences } from "@services/userPreferences";
 
-const { height } = Dimensions.get("window");
+/**
+ * First run.
+ *
+ * The previous version pinned each page to the full window height and
+ * switched scrolling off. Once every screen was padded clear of the notch,
+ * the page was taller than the space it had, its button sat below the bottom
+ * edge, and nobody could get past the welcome screen. The button now lives
+ * in a footer that is always on screen, and the content above it scrolls if
+ * it ever needs to — at large text sizes, or on a small phone.
+ *
+ * It also dropped a "How did you find us?" step. The answer was saved on the
+ * phone and never sent anywhere, beside a note claiming "we use this to
+ * improve our marketing".
+ */
 
-type Screen = "welcome" | "promise" | "setup" | "referral";
+type Step = "welcome" | "promise" | "household";
+const STEPS: Step[] = ["welcome", "promise", "household"];
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const scrollViewRef = useRef<ScrollView>(null);
-  const [currentScreen, setCurrentScreen] = useState<Screen>("welcome");
-  const [referralSource, setReferralSource] = useState("");
+  const [stepIndex, setStepIndex] = useState(0);
+  // Null until answered: this one drives safety warnings, so it isn't
+  // pre-selected for them.
+  const [hasChildrenOrPets, setHasChildrenOrPets] = useState<boolean | null>(null);
   const [finishing, setFinishing] = useState(false);
 
-  // Held here rather than inside the setup screen. It used to live in that
-  // component's own state, so the answer was discarded the moment the screen
-  // unmounted and the toxicity preference was never actually set — the
-  // feature SPEC §8.4 describes as "set it once in onboarding".
-  const [hasChildrenOrPets, setHasChildrenOrPets] = useState(false);
-
-  const handleNext = () => {
-    const screens: Screen[] = ["welcome", "promise", "setup", "referral"];
-    const currentIndex = screens.indexOf(currentScreen);
-    if (currentIndex < screens.length - 1) {
-      setCurrentScreen(screens[currentIndex + 1]);
-    }
-  };
+  const step = STEPS[stepIndex];
+  const isLast = stepIndex === STEPS.length - 1;
 
   const handleComplete = async () => {
     if (finishing) return;
     setFinishing(true);
 
     try {
-      // Spread as a conditional rather than passing undefined:
-      // saveUserPreferences merges with { ...current, ...prefs }, so an
-      // explicit undefined would overwrite the stored value rather than
-      // leaving it alone.
       await saveUserPreferences({
-        hasChildrenOrPets,
-        // Somebody with children or pets has told us they want to know about
+        hasChildrenOrPets: hasChildrenOrPets === true,
+        // Someone with children or pets has told us they want to know about
         // toxicity; turning the warnings on is the point of having asked.
         ...(hasChildrenOrPets ? { showToxicityWarnings: true } : {}),
       });
 
-      await completeOnboarding(referralSource.trim() || undefined);
+      await completeOnboarding();
       router.replace("/scan");
     } catch (error) {
       console.error("Failed to complete onboarding:", error);
-      // This was only logged, which left the user on a dead button with no
-      // idea why nothing happened.
       Alert.alert(
         "Couldn't save that",
-        "Your answers weren't stored. You can carry on and set them later in Settings.",
+        "Your answer wasn't stored. You can carry on and set it later in Settings.",
         [
           { text: "Try again", style: "cancel" },
           { text: "Carry on", onPress: () => router.replace("/scan") },
@@ -75,237 +74,204 @@ export default function OnboardingScreen() {
     }
   };
 
+  const handlePrimary = () => {
+    if (isLast) {
+      void handleComplete();
+    } else {
+      setStepIndex(stepIndex + 1);
+    }
+  };
+
   return (
-    <ScrollView
-      ref={scrollViewRef}
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      scrollEnabled={false}
-    >
-      {currentScreen === "welcome" && (
-        <Animated.View entering={FadeInDown}>
-          <Screen1 onNext={handleNext} />
-        </Animated.View>
-      )}
-
-      {currentScreen === "promise" && (
-        <Animated.View entering={FadeInDown}>
-          <Screen2 onNext={handleNext} />
-        </Animated.View>
-      )}
-
-      {currentScreen === "setup" && (
-        <Animated.View entering={FadeInDown}>
-          <Screen3
-            hasChildrenOrPets={hasChildrenOrPets}
-            onChange={setHasChildrenOrPets}
-            onNext={handleNext}
+    <View style={styles.container}>
+      {/* Progress is real information here: three steps, in order. */}
+      <View
+        style={styles.progress}
+        accessibilityRole="progressbar"
+        accessibilityLabel={`Step ${stepIndex + 1} of ${STEPS.length}`}
+      >
+        {STEPS.map((s, index) => (
+          <View
+            key={s}
+            style={[
+              styles.progressDot,
+              index <= stepIndex && styles.progressDotReached,
+              index === stepIndex && styles.progressDotCurrent,
+            ]}
           />
+        ))}
+      </View>
+
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View key={step} entering={FadeInDown.duration(320)}>
+          {step === "welcome" && <Welcome />}
+          {step === "promise" && <Promise />}
+          {step === "household" && (
+            <Household value={hasChildrenOrPets} onChange={setHasChildrenOrPets} />
+          )}
         </Animated.View>
-      )}
+      </ScrollView>
 
-      {currentScreen === "referral" && (
-        <Animated.View entering={FadeInDown}>
-          <Screen4
-            referralSource={referralSource}
-            onChangeReferral={setReferralSource}
-            onComplete={handleComplete}
-            finishing={finishing}
-          />
-        </Animated.View>
-      )}
-    </ScrollView>
-  );
-}
-
-// Screen 1: Welcome
-function Screen1({ onNext }: { onNext: () => void }) {
-  return (
-    <View style={styles.screen}>
-      <View style={styles.topSection}>
-        <Text style={styles.emoji}>🌱</Text>
-        <Text style={styles.title}>Welcome to Sorrel</Text>
-        <Text style={styles.subtitle}>The honest plant identification app</Text>
-      </View>
-
-      <View style={styles.middleSection}>
-        <FeatureRow icon="📸" text="Identify plants from photos" />
-        <FeatureRow icon="📚" text="Get curated care advice" />
-        <FeatureRow icon="🌿" text="Track your plant collection" />
-      </View>
-
-      <View style={styles.bottomSection}>
-        <Button label="Get Started" onPress={onNext} />
-      </View>
-    </View>
-  );
-}
-
-// Screen 2: The Promise
-function Screen2({ onNext }: { onNext: () => void }) {
-  return (
-    <View style={styles.screen}>
-      <View style={styles.topSection}>
-        <Text style={styles.emoji}>🤝</Text>
-        <Text style={styles.title}>Our Promise</Text>
-      </View>
-
-      <View style={styles.middleSection}>
-        <PromiseRow icon="✅" title="Never Fake Confidence">
-          <Text style={styles.description}>
-            We always show you when we're uncertain and give you alternatives.
-          </Text>
-        </PromiseRow>
-
-        <PromiseRow icon="🔓" title="Never Trap You">
-          <Text style={styles.description}>
-            See pricing before you commit. Cancel anytime, right in the app.
-          </Text>
-        </PromiseRow>
-
-        <PromiseRow icon="🎯" title="Never Give Bad Advice">
-          <Text style={styles.description}>
-            Care advice is written and sourced, never generated on the fly by
-            an AI. Where we haven't reviewed a plant's notes yet, we say so.
-          </Text>
-        </PromiseRow>
-      </View>
-
-      <View style={styles.bottomSection}>
-        <Button label="Next" onPress={onNext} />
-      </View>
-    </View>
-  );
-}
-
-// Screen 3: Setup
-function Screen3({
-  hasChildrenOrPets,
-  onChange,
-  onNext,
-}: {
-  hasChildrenOrPets: boolean;
-  onChange: (value: boolean) => void;
-  onNext: () => void;
-}) {
-
-  return (
-    <View style={styles.screen}>
-      <View style={styles.topSection}>
-        <Text style={styles.emoji}>⚙️</Text>
-        <Text style={styles.title}>Quick Setup</Text>
-      </View>
-
-      <View style={styles.middleSection}>
-        <Text style={styles.setupQuestion}>Do you have kids or pets at home?</Text>
-        <Text style={styles.setupSubtext}>
-          This helps us warn you about toxic plants.
-        </Text>
-
-        <View style={styles.toggleButtons}>
-          <TouchableOpacity
-            style={[styles.toggleButton, !hasChildrenOrPets && styles.toggleActive]}
-            onPress={() => onChange(false)}
-          >
-            <Text style={[styles.toggleText, !hasChildrenOrPets && styles.toggleTextActive]}>
-              No
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.toggleButton, hasChildrenOrPets && styles.toggleActive]}
-            onPress={() => onChange(true)}
-          >
-            <Text style={[styles.toggleText, hasChildrenOrPets && styles.toggleTextActive]}>
-              Yes
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.bottomSection}>
-        <Button label="Next" onPress={onNext} />
-      </View>
-    </View>
-  );
-}
-
-// Screen 4: Referral & Complete
-function Screen4({
-  referralSource,
-  onChangeReferral,
-  onComplete,
-  finishing,
-}: {
-  referralSource: string;
-  onChangeReferral: (text: string) => void;
-  onComplete: () => void;
-  finishing: boolean;
-}) {
-  return (
-    <View style={styles.screen}>
-      <View style={styles.topSection}>
-        <Text style={styles.emoji}>📲</Text>
-        <Text style={styles.title}>Almost There!</Text>
-      </View>
-
-      <View style={styles.middleSection}>
-        <Text style={styles.setupQuestion}>How did you find us?</Text>
-        <Text style={styles.setupSubtext}>
-          Help us understand which channels work. This is optional.
-        </Text>
-
-        <TextInput
-          style={styles.referralInput}
-          placeholder="E.g., App Store search, friend, TikTok..."
-          value={referralSource}
-          onChangeText={onChangeReferral}
-          placeholderTextColor={Colors.textDisabled}
+      <View style={styles.footer}>
+        <Button
+          label={isLast ? "Scan your first plant" : "Continue"}
+          onPress={handlePrimary}
+          loading={finishing}
+          disabled={isLast && hasChildrenOrPets === null}
         />
 
-        <Text style={styles.referralNote}>
-          📝 We use this to improve our marketing, not to track you personally.
-        </Text>
-      </View>
-
-      <View style={styles.bottomSection}>
-        <Button label="Scan your first plant" onPress={onComplete} loading={finishing} />
-        <Text style={styles.disclaimer}>
-          You'll need camera permission next. Photos of plants you save stay
-          on your phone.
-        </Text>
+        {stepIndex > 0 ? (
+          <TouchableOpacity
+            onPress={() => setStepIndex(stepIndex - 1)}
+            style={styles.secondaryAction}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryActionText}>Back</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.secondaryAction} />
+        )}
       </View>
     </View>
   );
 }
 
-// Helpers
-function FeatureRow({ icon, text }: { icon: string; text: string }) {
+function Welcome() {
   return (
-    <View style={styles.featureRow}>
-      <Text style={styles.featureIcon}>{icon}</Text>
-      <Text style={styles.featureText}>{text}</Text>
+    <View>
+      <Image
+        source={require("../assets/brand-mark.png")}
+        style={styles.mark}
+        accessibilityIgnoresInvertColors
+        accessibilityLabel="Sorrel"
+      />
+      <Text style={styles.brand}>Sorrel</Text>
+      <Text style={styles.lede}>
+        Point your camera at a plant. We'll tell you what it is — and exactly how sure we are.
+      </Text>
+
+      <View style={styles.list}>
+        <Row
+          icon="camera.viewfinder"
+          title="Identify in seconds"
+          body="One clear photo is usually enough. When it isn't, we say so."
+        />
+        <Row
+          icon="drop.fill"
+          title="Care notes"
+          body="Light, water and toxicity for the plants our library covers."
+        />
+        <Row
+          icon="leaf.fill"
+          title="Your collection"
+          body="A watering log, reminders and a photo journal for every plant you keep."
+        />
+      </View>
     </View>
   );
 }
 
-function PromiseRow({
-  icon,
-  title,
-  children,
+function Promise() {
+  return (
+    <View>
+      <Text style={styles.heading}>Three promises</Text>
+      <Text style={styles.sub}>The things plant apps usually get wrong.</Text>
+
+      <View style={styles.list}>
+        <Row
+          icon="checkmark.seal.fill"
+          title="We say when we're not sure"
+          body="Every answer shows how confident we are, with the other possibilities alongside."
+        />
+        <Row
+          icon="lock.open.fill"
+          title="No traps"
+          body="You see the price before any trial starts, and you can cancel from Settings at any time."
+        />
+        <Row
+          icon="book.closed.fill"
+          title="No made-up advice"
+          body="Care notes come from a fixed library, never generated on the fly. If nobody has reviewed a plant's notes yet, we tell you."
+        />
+      </View>
+    </View>
+  );
+}
+
+function Household({
+  value,
+  onChange,
 }: {
-  icon: string;
-  title: string;
-  children: React.ReactNode;
+  value: boolean | null;
+  onChange: (value: boolean) => void;
 }) {
   return (
-    <View style={styles.promiseRow}>
-      <Text style={styles.promiseIcon}>{icon}</Text>
-      <View style={styles.promiseContent}>
-        <Text style={styles.promiseTitle}>{title}</Text>
-        {children}
+    <View>
+      <Text style={styles.heading}>Anyone at home who might chew a leaf?</Text>
+      <Text style={styles.sub}>
+        Children or pets. We'll make sure toxicity warnings are switched on.
+      </Text>
+
+      <View style={styles.choices}>
+        <Choice
+          icon="pawprint.fill"
+          label="Yes, children or pets"
+          selected={value === true}
+          onPress={() => onChange(true)}
+        />
+        <Choice
+          icon="house.fill"
+          label="No, just me"
+          selected={value === false}
+          onPress={() => onChange(false)}
+        />
+      </View>
+
+      <Text style={styles.fine}>You can change this in Settings whenever you like.</Text>
+    </View>
+  );
+}
+
+function Row({ icon, title, body }: { icon: SFSymbol; title: string; body: string }) {
+  return (
+    <View style={styles.row}>
+      <View style={styles.rowIcon}>
+        <Icon name={icon} size={22} />
+      </View>
+      <View style={styles.rowText}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={styles.rowBody}>{body}</Text>
       </View>
     </View>
+  );
+}
+
+function Choice({
+  icon,
+  label,
+  selected,
+  onPress,
+}: {
+  icon: SFSymbol;
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.choice, selected && styles.choiceSelected]}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+    >
+      <Icon name={icon} size={22} color={selected ? "#FFFFFF" : Colors.leaf} />
+      <Text style={[styles.choiceLabel, selected && styles.choiceLabelSelected]}>{label}</Text>
+      {selected ? <Icon name="checkmark" size={18} color="#FFFFFF" weight="bold" /> : null}
+    </TouchableOpacity>
   );
 }
 
@@ -314,137 +280,138 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  contentContainer: {
-    minHeight: height,
+  progress: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+    paddingTop: Spacing.default,
+    paddingBottom: Spacing.tight,
   },
-  screen: {
+  progressDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.glass,
+  },
+  progressDotReached: {
+    backgroundColor: Colors.leafLight,
+  },
+  progressDotCurrent: {
+    width: 22,
+    backgroundColor: Colors.leaf,
+  },
+  body: {
     flex: 1,
-    height: height,
-    paddingHorizontal: Spacing.default,
-    justifyContent: "space-between",
+  },
+  bodyContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: Spacing.loose,
     paddingVertical: Spacing.loose,
   },
-  topSection: {
-    alignItems: "center",
-    marginTop: Spacing.spacious,
+  mark: {
+    width: 88,
+    height: 88,
+    marginBottom: Spacing.loose,
   },
-  emoji: {
-    fontSize: 64,
-    marginBottom: Spacing.default,
-  },
-  title: {
-    fontSize: Typography.display.fontSize,
-    fontWeight: Typography.display.fontWeight as any,
+  brand: {
+    ...Typography.displayLarge,
+    letterSpacing: 0.5,
     color: Colors.textPrimary,
-    marginBottom: Spacing.tight,
-    textAlign: "center",
   },
-  subtitle: {
-    fontSize: Typography.body.fontSize,
+  lede: {
+    ...Typography.bodyLarge,
+    lineHeight: 24,
     color: Colors.textSecondary,
-    textAlign: "center",
+    marginTop: Spacing.tight,
   },
-  middleSection: {
-    flex: 1,
+  heading: {
+    ...Typography.display,
+    color: Colors.textPrimary,
+  },
+  sub: {
+    ...Typography.bodyLarge,
+    lineHeight: 24,
+    color: Colors.textSecondary,
+    marginTop: Spacing.tight,
+  },
+  list: {
+    marginTop: Spacing.spacious,
+    gap: Spacing.loose,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Spacing.default,
+  },
+  rowIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "rgba(45, 88, 66, 0.08)",
+    alignItems: "center",
     justifyContent: "center",
   },
-  featureRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: Spacing.loose,
-  },
-  featureIcon: {
-    fontSize: 32,
-    marginRight: Spacing.default,
-  },
-  featureText: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
+  rowText: {
     flex: 1,
+    paddingTop: 2,
   },
-  promiseRow: {
-    flexDirection: "row",
-    marginBottom: Spacing.spacious,
-  },
-  promiseIcon: {
-    fontSize: 28,
-    marginRight: Spacing.default,
-    marginTop: Spacing.compact,
-  },
-  promiseContent: {
-    flex: 1,
-  },
-  promiseTitle: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
+  rowTitle: {
+    ...Typography.subheadline,
     color: Colors.textPrimary,
-    marginBottom: Spacing.compact,
   },
-  description: {
-    fontSize: Typography.body.fontSize,
+  rowBody: {
+    ...Typography.body,
+    lineHeight: 21,
     color: Colors.textSecondary,
-    lineHeight: 20,
+    marginTop: 2,
   },
-  setupQuestion: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.tight,
-    textAlign: "center",
-  },
-  setupSubtext: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    marginBottom: Spacing.loose,
-  },
-  toggleButtons: {
-    flexDirection: "row",
+  choices: {
+    marginTop: Spacing.spacious,
     gap: Spacing.default,
-    marginBottom: Spacing.loose,
   },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: Spacing.default,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: Colors.glass,
+  choice: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: Spacing.default,
+    minHeight: 60,
+    paddingHorizontal: Spacing.default,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.glass,
+    backgroundColor: Colors.background,
   },
-  toggleActive: {
+  choiceSelected: {
     backgroundColor: Colors.leaf,
     borderColor: Colors.leaf,
   },
-  toggleText: {
-    fontSize: Typography.button.fontSize,
-    fontWeight: Typography.button.fontWeight as any,
+  choiceLabel: {
+    ...Typography.bodyLarge,
     color: Colors.textPrimary,
+    flex: 1,
   },
-  toggleTextActive: {
+  choiceLabelSelected: {
     color: "#FFFFFF",
+    fontWeight: "600",
   },
-  referralInput: {
-    borderWidth: 1,
-    borderColor: Colors.glass,
-    borderRadius: 8,
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.default,
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.default,
+  fine: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    marginTop: Spacing.loose,
   },
-  referralNote: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textDisabled,
-    fontStyle: "italic",
+  footer: {
+    paddingHorizontal: Spacing.loose,
+    paddingTop: Spacing.default,
+    paddingBottom: Spacing.tight,
   },
-  bottomSection: {
-    marginBottom: Spacing.default,
+  secondaryAction: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: Spacing.compact,
   },
-  disclaimer: {
-    fontSize: Typography.caption2.fontSize,
-    color: Colors.textDisabled,
-    textAlign: "center",
-    marginTop: Spacing.default,
+  secondaryActionText: {
+    ...Typography.bodyLarge,
+    color: Colors.leaf,
   },
 });

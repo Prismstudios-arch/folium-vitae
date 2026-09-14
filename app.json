@@ -5,7 +5,7 @@
     "scheme": "sorrel",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "assetBundlePatterns": [
       "**/*"
@@ -17,13 +17,18 @@
         "NSCameraUsageDescription": "Sorrel uses your camera to identify plants, check their health, and add photos to your plant journal.",
         "NSPhotoLibraryUsageDescription": "Sorrel uses your photo library to identify plants from photos you have already taken, and to add them to your plant journal.",
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "icon": {
+        "light": "./assets/icon.png",
+        "dark": "./assets/icon-dark.png",
+        "tinted": "./assets/icon-tinted.png"
       }
     },
     "android": {
       "package": "com.prismstudios.sorrel",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0C2A1F"
+        "backgroundColor": "#05261B"
       },
       "permissions": [
         "android.permission.CAMERA"
@@ -56,7 +61,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#0C2A1F"
+          "color": "#1F7A57"
         }
       ],
       [
@@ -64,10 +69,10 @@
         {
           "image": "./assets/splash.png",
           "resizeMode": "contain",
-          "backgroundColor": "#0C2A1F",
+          "backgroundColor": "#05261B",
           "dark": {
             "image": "./assets/splash.png",
-            "backgroundColor": "#0C2A1F"
+            "backgroundColor": "#05261B"
           }
         }
       ],

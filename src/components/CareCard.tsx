@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
+import type { SFSymbol } from "expo-symbols";
 import { CareGuide, ToxicityLevel } from "@domain/plant";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import {
@@ -10,6 +11,7 @@ import {
   formatTemperatureRange,
 } from "@services/careFormatting";
 import { ToxicityBadge } from "./Card";
+import { Icon } from "./Icon";
 
 interface CareCardProps {
   guide: CareGuide;
@@ -47,6 +49,11 @@ function ToxicityBadges({ guide }: { guide: CareGuide }) {
   );
 }
 
+/**
+ * Care notes. DESIGN.md: no card styling in the full view, dividers between
+ * sections, a consistent icon on the left and the text on the right. The
+ * icons were emoji; they are SF Symbols in the brand colour now.
+ */
 export function CareCard({ guide, compactMode = false, units = "metric" }: CareCardProps) {
   const temperature = formatTemperatureRange(
     guide.temperature.minCelsius,
@@ -58,16 +65,18 @@ export function CareCard({ guide, compactMode = false, units = "metric" }: CareC
   if (compactMode) {
     return (
       <View style={styles.compactContainer}>
-        <Text style={styles.heading}>Care Summary</Text>
+        <Text style={styles.heading}>Care summary</Text>
 
-        <CareRow icon="💡" label="Light" value={describeLight(guide.light)} />
-        <CareRow icon="💧" label="Water" value={describeWaterShort(guide.water.frequency)} />
-        <CareRow icon="🌡️" label="Temperature" value={temperature} />
-        <CareRow icon="💨" label="Humidity" value={humidity} />
+        <CareRow icon="sun.max.fill" label="Light" value={describeLight(guide.light)} />
+        <CareRow icon="drop.fill" label="Water" value={describeWaterShort(guide.water.frequency)} />
+        <CareRow icon="thermometer.medium" label="Temperature" value={temperature} />
+        <CareRow icon="humidity.fill" label="Humidity" value={humidity} last={!hasToxicity(guide)} />
 
         {hasToxicity(guide) && (
-          <View style={styles.row}>
-            <Text style={styles.icon}>⚠️</Text>
+          <View style={[styles.row, styles.rowLast]}>
+            <View style={styles.rowIcon}>
+              <Icon name="exclamationmark.triangle.fill" size={18} color={Colors.toxicity} />
+            </View>
             <View style={styles.content}>
               <Text style={styles.label}>Toxicity</Text>
               <ToxicityBadges guide={guide} />
@@ -98,12 +107,12 @@ export function CareCard({ guide, compactMode = false, units = "metric" }: CareC
         </Text>
       ) : null}
 
-      <CareSection icon="💡" title="Light">
+      <CareSection icon="sun.max.fill" title="Light">
         <Text style={styles.text}>{describeLight(guide.light)}</Text>
         {guide.light.notes ? <Text style={styles.notes}>{guide.light.notes}</Text> : null}
       </CareSection>
 
-      <CareSection icon="💧" title="Watering">
+      <CareSection icon="drop.fill" title="Watering">
         <Text style={styles.text}>{describeWaterShort(guide.water.frequency)}</Text>
         {guide.water.notes ? <Text style={styles.notes}>{guide.water.notes}</Text> : null}
         {guide.water.seasonalModifier ? (
@@ -111,40 +120,40 @@ export function CareCard({ guide, compactMode = false, units = "metric" }: CareC
         ) : null}
       </CareSection>
 
-      <CareSection icon="🌍" title="Soil">
+      <CareSection icon="mountain.2.fill" title="Soil">
         <Text style={styles.text}>{describeSoil(guide.soil.type)}</Text>
         {guide.soil.drainage ? <Text style={styles.notes}>{guide.soil.drainage}</Text> : null}
       </CareSection>
 
-      <CareSection icon="🌡️" title="Temperature">
+      <CareSection icon="thermometer.medium" title="Temperature">
         <Text style={styles.text}>{temperature}</Text>
       </CareSection>
 
-      <CareSection icon="💨" title="Humidity">
+      <CareSection icon="humidity.fill" title="Humidity">
         <Text style={styles.text}>{humidity}</Text>
       </CareSection>
 
       {hasToxicity(guide) && (
-        <CareSection icon="⚠️" title="Toxicity">
+        <CareSection icon="exclamationmark.triangle.fill" title="Toxicity" iconColor={Colors.toxicity}>
           <ToxicityBadges guide={guide} />
           {guide.toxicity.notes ? <Text style={styles.notes}>{guide.toxicity.notes}</Text> : null}
         </CareSection>
       )}
 
       {guide.feeding ? (
-        <CareSection icon="🌱" title="Feeding">
+        <CareSection icon="leaf.fill" title="Feeding">
           <Text style={styles.text}>{guide.feeding}</Text>
         </CareSection>
       ) : null}
 
       {guide.repotting ? (
-        <CareSection icon="🪴" title="Repotting">
+        <CareSection icon="arrow.triangle.2.circlepath" title="Repotting">
           <Text style={styles.text}>{guide.repotting}</Text>
         </CareSection>
       ) : null}
 
       {guide.commonProblems && guide.commonProblems.length > 0 ? (
-        <CareSection icon="🐛" title="Common Problems">
+        <CareSection icon="ladybug.fill" title="Common problems">
           {guide.commonProblems.map((problem, idx) => (
             <Text key={idx} style={styles.text}>
               • {problem}
@@ -162,16 +171,17 @@ export function CareCard({ guide, compactMode = false, units = "metric" }: CareC
 }
 
 interface CareSectionProps {
-  icon: string;
+  icon: SFSymbol;
   title: string;
+  iconColor?: string;
   children: React.ReactNode;
 }
 
-function CareSection({ icon, title, children }: CareSectionProps) {
+function CareSection({ icon, title, iconColor = Colors.leaf, children }: CareSectionProps) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionTitle}>
-        <Text style={styles.sectionIcon}>{icon}</Text>
+        <Icon name={icon} size={22} color={iconColor} />
         <Text style={styles.sectionHeading}>{title}</Text>
       </View>
       <View style={styles.sectionContent}>{children}</View>
@@ -180,15 +190,18 @@ function CareSection({ icon, title, children }: CareSectionProps) {
 }
 
 interface CareRowProps {
-  icon: string;
+  icon: SFSymbol;
   label: string;
   value: string;
+  last?: boolean;
 }
 
-function CareRow({ icon, label, value }: CareRowProps) {
+function CareRow({ icon, label, value, last = false }: CareRowProps) {
   return (
-    <View style={styles.row}>
-      <Text style={styles.icon}>{icon}</Text>
+    <View style={[styles.row, last && styles.rowLast]}>
+      <View style={styles.rowIcon}>
+        <Icon name={icon} size={18} />
+      </View>
       <View style={styles.content}>
         <Text style={styles.label}>{label}</Text>
         <Text style={styles.value}>{value}</Text>
@@ -199,9 +212,12 @@ function CareRow({ icon, label, value }: CareRowProps) {
 
 const styles = StyleSheet.create({
   compactContainer: {
-    backgroundColor: Colors.glass,
-    borderRadius: 12,
-    padding: Spacing.default,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glass,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.default,
+    paddingTop: Spacing.default,
   },
   fullContainer: {
     flex: 1,
@@ -209,33 +225,31 @@ const styles = StyleSheet.create({
     padding: Spacing.default,
   },
   heading: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
+    ...Typography.subheadline,
     color: Colors.textPrimary,
-    marginBottom: Spacing.default,
+    marginBottom: Spacing.tight,
   },
   header: {
     marginBottom: Spacing.loose,
   },
   title: {
-    fontSize: Typography.display.fontSize,
-    fontWeight: Typography.display.fontWeight as any,
+    ...Typography.display,
     color: Colors.textPrimary,
     marginBottom: Spacing.compact,
   },
   scientific: {
-    fontSize: Typography.body.fontSize,
+    ...Typography.body,
     color: Colors.textSecondary,
     fontStyle: "italic",
     marginBottom: Spacing.tight,
   },
   taxonomy: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textDisabled,
+    ...Typography.caption1,
+    color: Colors.textSecondary,
   },
   reviewDate: {
-    fontSize: Typography.caption2.fontSize,
-    color: Colors.textDisabled,
+    ...Typography.caption2,
+    color: Colors.textSecondary,
     marginBottom: Spacing.loose,
     fontStyle: "italic",
   },
@@ -248,57 +262,62 @@ const styles = StyleSheet.create({
   sectionTitle: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: Spacing.default,
-  },
-  sectionIcon: {
-    fontSize: 24,
-    marginRight: Spacing.default,
+    gap: Spacing.default,
+    marginBottom: Spacing.tight,
   },
   sectionHeading: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
+    ...Typography.subheadline,
     color: Colors.textPrimary,
   },
   sectionContent: {
-    marginLeft: 32,
+    marginLeft: 38,
   },
   row: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: Spacing.default,
+    alignItems: "center",
+    gap: Spacing.default,
+    paddingVertical: Spacing.tight + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.glass,
   },
-  icon: {
-    fontSize: 20,
-    marginRight: Spacing.default,
-    marginTop: Spacing.compact,
+  rowLast: {
+    borderBottomWidth: 0,
+    paddingBottom: Spacing.default,
+  },
+  rowIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "rgba(45, 88, 66, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   content: {
     flex: 1,
   },
   label: {
-    fontSize: Typography.caption1.fontSize,
+    ...Typography.caption2,
     color: Colors.textSecondary,
-    marginBottom: Spacing.compact,
   },
   value: {
-    fontSize: Typography.body.fontSize,
+    ...Typography.body,
     color: Colors.textPrimary,
     fontWeight: "500",
+    marginTop: 1,
   },
   text: {
-    fontSize: Typography.body.fontSize,
+    ...Typography.body,
     color: Colors.textPrimary,
     lineHeight: 22,
     marginBottom: Spacing.tight,
   },
   notes: {
-    fontSize: Typography.caption1.fontSize,
+    ...Typography.caption1,
     color: Colors.textSecondary,
     marginTop: Spacing.tight,
-    fontStyle: "italic",
   },
   seasonal: {
-    fontSize: Typography.caption1.fontSize,
+    ...Typography.caption1,
     color: Colors.soil,
     marginTop: Spacing.tight,
     fontWeight: "600",
@@ -307,15 +326,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: Spacing.tight,
-    marginBottom: Spacing.default,
+    marginTop: Spacing.compact,
   },
   footer: {
     paddingTop: Spacing.loose,
-    borderTopColor: Colors.glass,
-    borderTopWidth: 1,
   },
   footerText: {
-    fontSize: Typography.caption1.fontSize,
+    ...Typography.caption1,
     color: Colors.textSecondary,
     marginBottom: Spacing.tight,
   },

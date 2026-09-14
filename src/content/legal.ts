@@ -202,7 +202,7 @@ export const TERMS_OF_USE: LegalDocument = {
       blocks: [
         {
           type: "bullet",
-          text: "The free tier includes a set number of identifications each day. The count resets at midnight, and the app tells you when.",
+          text: "The free tier includes a set number of identifications each day. The count resets every day at 00:00 UTC, and the app shows how many you have left.",
         },
         {
           type: "bullet",

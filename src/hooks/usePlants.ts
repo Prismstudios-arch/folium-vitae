@@ -25,9 +25,13 @@ export function usePlants() {
     loadPlants();
   }, []);
 
-  const loadPlants = useCallback(async () => {
+  /**
+   * silent: refresh without flipping the loading flag — for returning to a
+   * screen that is already showing the list.
+   */
+  const loadPlants = useCallback(async (options?: { silent?: boolean }) => {
     try {
-      setLoading(true);
+      if (!options?.silent) setLoading(true);
       setError(null);
       const data = await fetchAllPlants();
       setPlants(data);

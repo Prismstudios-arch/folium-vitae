@@ -60,10 +60,7 @@ diagnoseRoutes.post(
   "/",
   asyncHandler(async (req: Request, res: Response) => {
     const userId = req.auth!.sub;
-    const { imageHash, plantId } = (req.body ?? {}) as {
-      imageHash?: unknown;
-      plantId?: unknown;
-    };
+    const { imageHash } = (req.body ?? {}) as { imageHash?: unknown };
 
     if (typeof imageHash !== "string" || imageHash.length < 8) {
       throw ApiError.badRequest("An image hash is required");
@@ -114,19 +111,9 @@ diagnoseRoutes.post(
         [`health:${imageHash}`, assessment.provider, JSON.stringify(assessment)]
       );
 
-      if (typeof plantId === "string" && plantId) {
-        await query(
-          `INSERT INTO diagnoses
-             (plant_id, is_healthy, confidence, diseases, detected_at)
-           VALUES ($1, $2, $3, $4, now())`,
-          [
-            plantId,
-            assessment.isHealthy,
-            assessment.healthyProbability,
-            assessment.diseases.map((d) => d.name),
-          ]
-        );
-      }
+      // No diagnoses row. That table's plant_id references the server's
+      // plants table, and plants live on the phone — the id sent here never
+      // existed server-side, so the insert failed on every health check.
     } catch (error) {
       logger.error("Failed to record diagnosis:", error);
     }
