@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button, SecondaryButton } from "@components/Button";
-import { PRIVACY_POLICY_URL, TERMS_URL, SUPPORT_EMAIL } from "@constants/config";
+import { SUPPORT_EMAIL } from "@constants/config";
 import {
   Plan,
   getPlans,
@@ -20,8 +20,12 @@ import {
   restorePurchases,
   purchasesStatus,
   manageSubscriptionsUrl,
+  syncEntitlementsWithServer,
 } from "@services/purchases";
+import { addTrialLength } from "@services/subscriptionTerms";
 import { scheduleTrialReminder } from "@services/trialReminder";
+import { getApiClient } from "@services/apiClient";
+import { useGoBack } from "@hooks/useGoBack";
 
 /**
  * Paywall.
@@ -34,11 +38,17 @@ import { scheduleTrialReminder } from "@services/trialReminder";
  *  - No fake countdowns, no fake discounts, no "97% off today only".
  *  - Terms and privacy links present, which Guideline 3.1.2 also requires.
  *  - Every price comes from the store, localised. Nothing is hardcoded.
+ *
+ * And one this screen used to break: only offer what the subscription
+ * actually adds. It advertised "the full offline care library" — which free
+ * users already see, and which holds a handful of plants.
  */
 export default function SubscriptionScreen() {
   const router = useRouter();
+  const goBack = useGoBack("/");
 
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [freeLimit, setFreeLimit] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -47,6 +57,18 @@ export default function SubscriptionScreen() {
 
   useEffect(() => {
     void load();
+
+    // The free allowance, from the server that enforces it — a hardcoded
+    // "7" here would quietly go wrong the day the limit changes. Only a free
+    // account's limit is the free limit; otherwise the number is left out.
+    getApiClient()
+      .getQuota()
+      .then((quota) => {
+        if (quota.plan === "free") setFreeLimit(quota.limit);
+      })
+      .catch(() => {
+        // Offline. The sentence reads fine without a number.
+      });
   }, []);
 
   const load = async () => {
@@ -57,6 +79,8 @@ export default function SubscriptionScreen() {
       setLoading(false);
     }
   };
+
+  const periodText = (plan: Plan) => (plan.period ? ` per ${plan.period}` : "");
 
   const handlePurchase = async (plan: Plan) => {
     if (busyPlanId) return;
@@ -75,22 +99,37 @@ export default function SubscriptionScreen() {
         return;
       }
 
-      // Schedule the warning before the first charge lands.
+      // Apply it on the server now, not whenever the webhook lands —
+      // otherwise the first Premium feature opened after paying could still
+      // say it's locked.
+      await syncEntitlementsWithServer();
+
+      // Scheduling can fail, or be refused. That must neither swallow the
+      // confirmation of a purchase that went through, nor let the message
+      // promise a reminder that wasn't set.
+      let reminderSet = false;
       if (plan.trial) {
-        const chargeDate = addTrialLength(new Date(), plan.trial.duration);
-        await scheduleTrialReminder({
-          chargeDate,
-          priceString: plan.priceString,
-          period: plan.period,
-        });
+        try {
+          const chargeDate = addTrialLength(new Date(), plan.trial.unit, plan.trial.count);
+          reminderSet =
+            (await scheduleTrialReminder({
+              chargeDate,
+              priceString: plan.priceString,
+              period: plan.period,
+            })) !== null;
+        } catch (error) {
+          console.warn("Couldn't schedule the trial reminder:", error);
+        }
       }
 
       Alert.alert(
         "You're in",
         plan.trial
-          ? `Your ${plan.trial.duration} trial has started. We'll remind you 2 days before it converts.`
-          : "Thanks — everything is unlocked.",
-        [{ text: "Done", onPress: () => router.back() }]
+          ? reminderSet
+            ? `Your ${plan.trial.duration} trial has started. We'll remind you 2 days before it ends.`
+            : `Your ${plan.trial.duration} trial has started. It then renews at ${plan.priceString}${periodText(plan)} unless you cancel before it ends.`
+          : "Thanks — Premium is unlocked.",
+        [{ text: "Done", onPress: goBack }]
       );
     } finally {
       setBusyPlanId(null);
@@ -98,14 +137,31 @@ export default function SubscriptionScreen() {
   };
 
   const handleRestore = async () => {
+    if (restoring) return;
+
     setRestoring(true);
     try {
       const outcome = await restorePurchases();
 
-      Alert.alert(
-        outcome.activeEntitlements.length > 0 ? "Restored" : "Nothing to restore",
-        outcome.message ?? "Your subscription is active again."
-      );
+      // A failure used to be titled "Nothing to restore", and finding
+      // nothing came with "Your subscription is active again".
+      if (outcome.status === "failed") {
+        Alert.alert("Couldn't restore", outcome.message ?? "Try again in a moment.");
+        return;
+      }
+
+      if (outcome.activeEntitlements.length === 0) {
+        Alert.alert(
+          "Nothing to restore",
+          outcome.message ?? "No previous purchases found on this Apple ID."
+        );
+        return;
+      }
+
+      await syncEntitlementsWithServer();
+      Alert.alert("Restored", "Your subscription is active on this phone again.", [
+        { text: "Done", onPress: goBack },
+      ]);
     } finally {
       setRestoring(false);
     }
@@ -116,7 +172,7 @@ export default function SubscriptionScreen() {
       {/* Visible from the first frame, top-left, full size. SPEC §9. */}
       <View style={styles.topBar}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={goBack}
           style={styles.close}
           accessibilityRole="button"
           accessibilityLabel="Close"
@@ -129,15 +185,18 @@ export default function SubscriptionScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Sorrel Premium</Text>
         <Text style={styles.subtitle}>
-          Unlimited identifications, disease diagnosis, and the full offline care
-          library.
+          Unlimited identifications, plus health checks that suggest what's wrong with a plant and
+          what to try first.
         </Text>
 
         <View style={styles.freeNote}>
           <Text style={styles.freeNoteText}>
-            The free tier keeps working either way — 7 identifications a day, your
-            whole collection, and watering reminders. Nothing you already have gets
-            taken away.
+            The free tier keeps working either way —{" "}
+            {freeLimit !== null
+              ? `${freeLimit} identifications a day`
+              : "a daily allowance of identifications"}
+            , care notes, your whole collection and watering reminders. Nothing you already have
+            gets taken away.
           </Text>
         </View>
 
@@ -152,8 +211,8 @@ export default function SubscriptionScreen() {
           <View style={styles.unavailable}>
             <Text style={styles.unavailableTitle}>Nothing to show</Text>
             <Text style={styles.unavailableText}>
-              We couldn't load plans right now. Check your connection and try again —
-              you haven't been charged for anything.
+              We couldn't load plans right now. Check your connection and try again — you haven't
+              been charged for anything.
             </Text>
             <SecondaryButton label="Try again" onPress={load} style={styles.retry} />
           </View>
@@ -177,19 +236,20 @@ export default function SubscriptionScreen() {
                   footnote. SPEC §9. */}
               {plan.trial ? (
                 <Text style={styles.trialTerms}>
-                  {plan.trial.duration} free, then {plan.trial.thenPrice} per {plan.period}.
-                  Renews automatically until you cancel. Cancel any time in Settings —
-                  we'll remind you 2 days before the first charge.
+                  {plan.trial.duration} free, then {plan.trial.thenPrice}
+                  {periodText(plan)}. Renews automatically until you cancel. Cancel any time in
+                  Settings — if notifications are on, we'll remind you 2 days before the first
+                  charge.
                 </Text>
               ) : (
                 <Text style={styles.trialTerms}>
-                  Renews automatically at {plan.priceString} per {plan.period} until you
-                  cancel.
+                  Renews automatically at {plan.priceString}
+                  {periodText(plan)} until you cancel.
                 </Text>
               )}
 
               <Button
-                label={plan.trial ? `Start ${plan.trial.duration} free` : `Subscribe`}
+                label={plan.trial ? `Start ${plan.trial.duration} free` : "Subscribe"}
                 onPress={() => handlePurchase(plan)}
                 loading={busyPlanId === plan.packageId}
                 disabled={busyPlanId !== null}
@@ -216,9 +276,8 @@ export default function SubscriptionScreen() {
 
         <View style={styles.legal}>
           <Text style={styles.legalText}>
-            Payment is charged to your Apple ID. Subscriptions renew unless cancelled
-            at least 24 hours before the period ends. Manage them in your Apple
-            account settings.
+            Payment is charged to your Apple ID. Subscriptions renew unless cancelled at least 24
+            hours before the period ends. Manage them in your Apple account settings.
           </Text>
 
           <View style={styles.legalLinks}>
@@ -243,46 +302,10 @@ export default function SubscriptionScreen() {
   );
 }
 
-/**
- * Work out when the first charge lands from the store's trial description.
- *
- * Parsed rather than assumed, because the trial length is configured in App
- * Store Connect and a hardcoded 7 would quietly become wrong the moment it
- * changed.
- */
-function addTrialLength(from: Date, duration: string): Date {
-  const match = duration.match(/(\d+)\s*(day|week|month|year)/i);
-  const result = new Date(from);
-
-  if (!match) {
-    result.setDate(result.getDate() + 7);
-    return result;
-  }
-
-  const count = Number(match[1]);
-
-  switch (match[2].toLowerCase()) {
-    case "day":
-      result.setDate(result.getDate() + count);
-      break;
-    case "week":
-      result.setDate(result.getDate() + count * 7);
-      break;
-    case "month":
-      result.setMonth(result.getMonth() + count);
-      break;
-    case "year":
-      result.setFullYear(result.getFullYear() + count);
-      break;
-  }
-
-  return result;
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   topBar: {
-    paddingTop: Spacing.spacious,
+    paddingTop: Spacing.default,
     paddingHorizontal: Spacing.default,
     paddingBottom: Spacing.tight,
   },

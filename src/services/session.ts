@@ -31,6 +31,15 @@ export async function getDeviceId(): Promise<string> {
   return deviceId;
 }
 
+/**
+ * Forget this install's id, so the next sign-in creates a new anonymous
+ * account. Used after deleting an account — reusing the old id would
+ * quietly recreate the account that was just deleted.
+ */
+export async function forgetDevice(): Promise<void> {
+  await AsyncStorage.removeItem(DEVICE_ID_KEY);
+}
+
 export interface SessionState {
   user: PublicUser | null;
   online: boolean;

@@ -4,27 +4,31 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  FlatList,
   Image,
   ActivityIndicator,
   Alert,
   Dimensions,
   Platform,
+  Linking,
 } from "react-native";
 import { useState, useEffect } from "react";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
 import { PlantPhoto } from "@domain/plant";
 import { fetchPhotos, addPhoto, deletePhoto } from "@services/database";
-import { hashImage } from "@services/capture";
+import { fingerprintPhoto } from "@services/photoStorage";
+import { parseExifDate } from "@services/photoPaths";
+import { useGoBack } from "@hooks/useGoBack";
 
 const { width } = Dimensions.get("window");
 const PHOTO_SIZE = (width - Spacing.default * 3) / 2;
 
+type Source = "camera" | "library";
+
 export default function PhotoJournalScreen() {
-  const router = useRouter();
+  const goBack = useGoBack("/my-plants");
   const { plantId, plantName } = useLocalSearchParams<{
     plantId: string;
     plantName?: string;
@@ -32,7 +36,9 @@ export default function PhotoJournalScreen() {
 
   const [photos, setPhotos] = useState<PlantPhoto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  // Photos whose file has gone — shown as a labelled gap, not a blank tile.
+  const [unavailable, setUnavailable] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     void loadPhotos();
@@ -55,61 +61,116 @@ export default function PhotoJournalScreen() {
     }
   };
 
-  const handleAddPhoto = async () => {
-    if (!plantId || uploading) return;
+  // The journal could only import from the library. A growth journal you
+  // can't photograph your plant into today is missing its main use.
+  const handleAddPhoto = () => {
+    if (!plantId || saving) return;
 
+    Alert.alert("Add a photo", undefined, [
+      { text: "Take photo", onPress: () => void pickPhoto("camera") },
+      { text: "Choose from library", onPress: () => void pickPhoto("library") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+  const pickPhoto = async (source: Source) => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      if (source === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            "Camera access is off",
+            "Allow camera access for Sorrel in Settings to take journal photos.",
+            [
+              { text: "Not now", style: "cancel" },
+              { text: "Open Settings", onPress: () => void Linking.openSettings() },
+            ]
+          );
+          return;
+        }
+      }
+
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
-        // Needed to fingerprint the image so the same photo is not stored
-        // twice. The picker gives a URI we cannot read the bytes of otherwise.
-        base64: true,
-      });
+      };
+
+      const result =
+        source === "camera"
+          ? await ImagePicker.launchCameraAsync(options)
+          : // EXIF is read only for the date the photo was taken; nothing
+            // else from it is kept.
+            await ImagePicker.launchImageLibraryAsync({ ...options, exif: true });
 
       if (result.canceled || !result.assets[0]) return;
 
-      const image = result.assets[0];
+      const asset = result.assets[0];
+
+      // The old code hashed the image "so the same photo is not stored
+      // twice" and then never compared the hash with anything. This does.
+      const fingerprint = fingerprintPhoto(asset.uri);
+      if (fingerprint && photos.some((p) => p.imageHash === fingerprint)) {
+        Alert.alert("Already in the journal", "That photo has already been added for this plant.");
+        return;
+      }
+
+      const dateTaken =
+        source === "library" ? (parseExifDate(asset.exif) ?? new Date()) : new Date();
 
       // Alert.prompt is iOS-only — on Android it silently does nothing, and
       // the photo would never be saved. Captions are optional, so Android
-      // saves straight away rather than being handed a dialog that no-ops.
+      // saves straight away.
       if (Platform.OS === "ios") {
         Alert.prompt(
           "Add a note",
           "Anything worth remembering about this photo?",
           [
-            { text: "Skip", style: "cancel", onPress: () => void savePhoto(image) },
+            {
+              text: "Skip",
+              style: "cancel",
+              onPress: () => void savePhoto(asset.uri, fingerprint, dateTaken),
+            },
             {
               text: "Save",
-              // Alert.prompt types the callback loosely; annotated so React
-              // 19's stricter inference does not fall back to any.
-              onPress: (caption?: string) => void savePhoto(image, caption),
+              // Annotated so React 19's stricter inference doesn't fall back
+              // to any.
+              onPress: (caption?: string) => void savePhoto(asset.uri, fingerprint, dateTaken, caption),
             },
           ],
           "plain-text",
           ""
         );
       } else {
-        await savePhoto(image);
+        await savePhoto(asset.uri, fingerprint, dateTaken);
       }
     } catch (error) {
-      console.error("Failed to pick image:", error);
-      Alert.alert("Couldn't open your photos", "Check Sorrel has permission in Settings.");
+      console.error("Failed to add photo:", error);
+      Alert.alert(
+        source === "camera" ? "Couldn't open the camera" : "Couldn't open your photos",
+        "Check Sorrel's permissions in Settings, then try again."
+      );
     }
   };
 
-  const savePhoto = async (image: ImagePicker.ImagePickerAsset, caption?: string) => {
+  const savePhoto = async (
+    uri: string,
+    fingerprint: string | null,
+    dateTaken: Date,
+    caption?: string
+  ) => {
     if (!plantId) return;
 
-    setUploading(true);
+    setSaving(true);
     try {
+      // addPhoto copies the file out of the picker's cache, which iOS clears
+      // whenever it likes. Storing the cache URI, as this used to, lost the
+      // photo sooner or later.
       const saved = await addPhoto(plantId, {
-        dateTaken: new Date(),
-        imagePath: image.uri,
-        imageHash: image.base64 ? await hashImage(image.base64) : image.uri,
+        dateTaken,
+        imagePath: uri,
+        imageHash: fingerprint ?? uri,
         caption: caption?.trim() || undefined,
       });
 
@@ -120,7 +181,7 @@ export default function PhotoJournalScreen() {
       console.error("Failed to save photo:", error);
       Alert.alert("Couldn't save", "That photo wasn't added. Try again.");
     } finally {
-      setUploading(false);
+      setSaving(false);
     }
   };
 
@@ -153,23 +214,40 @@ export default function PhotoJournalScreen() {
       year: "numeric",
     });
 
+  const header = (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={goBack} accessibilityRole="button">
+        <Text style={styles.backButton}>← Back</Text>
+      </TouchableOpacity>
+      <Text style={styles.title}>Photo Journal</Text>
+      {plantName ? <Text style={styles.plantName}>{plantName}</Text> : null}
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={styles.container}>
+        {header}
         <ActivityIndicator size="large" color={Colors.leaf} style={styles.loader} />
+      </View>
+    );
+  }
+
+  if (!plantId) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>No plant selected</Text>
+          <Text style={styles.emptyText}>Open a plant from your collection to see its journal.</Text>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Photo Journal</Text>
-        <Text style={styles.plantName}>{plantName}</Text>
-      </View>
+      {header}
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {photos.length === 0 ? (
@@ -177,54 +255,51 @@ export default function PhotoJournalScreen() {
             <Text style={styles.emptyEmoji}>📸</Text>
             <Text style={styles.emptyTitle}>No photos yet</Text>
             <Text style={styles.emptyText}>
-              Start building a visual history of your plant. Track its growth over time!
+              Add a photo every few weeks and you'll be able to see how it has grown.
             </Text>
           </View>
         ) : (
-          <FlatList
-            data={photos}
-            numColumns={2}
-            columnWrapperStyle={styles.row}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.photoCard}
-                onLongPress={() => handleDeletePhoto(item.id)}
-              >
-                <Image
-                  source={{ uri: item.imagePath }}
-                  style={styles.photoImage}
-                  onError={() => console.warn("Photo failed to load:", item.id)}
-                />
-                <View style={styles.photoInfo}>
-                  <Text style={styles.photoDate}>{formatDate(item.dateTaken)}</Text>
-                  {item.caption && (
-                    <Text style={styles.photoCaption} numberOfLines={2}>
-                      {item.caption}
-                    </Text>
+          <>
+            <Text style={styles.hint}>Press and hold a photo to delete it.</Text>
+            {/* A wrapping grid of Views rather than a FlatList: a virtualised
+                list nested in a ScrollView warns and gains nothing here. */}
+            <View style={styles.grid}>
+              {photos.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.photoCard}
+                  onLongPress={() => handleDeletePhoto(item.id)}
+                  accessibilityHint="Press and hold to delete"
+                >
+                  {unavailable.has(item.id) ? (
+                    <View style={[styles.photoImage, styles.photoMissing]}>
+                      <Text style={styles.photoMissingText}>Photo no longer on this phone</Text>
+                    </View>
+                  ) : (
+                    <Image
+                      source={{ uri: item.imagePath }}
+                      style={styles.photoImage}
+                      onError={() => setUnavailable((prev) => new Set(prev).add(item.id))}
+                    />
                   )}
-                </View>
-              </TouchableOpacity>
-            )}
-          />
+                  <View style={styles.photoInfo}>
+                    <Text style={styles.photoDate}>{formatDate(item.dateTaken)}</Text>
+                    {item.caption ? (
+                      <Text style={styles.photoCaption} numberOfLines={2}>
+                        {item.caption}
+                      </Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
         )}
       </ScrollView>
 
       <View style={styles.footer}>
-        <Button
-          label="Add Photo"
-          onPress={handleAddPhoto}
-          disabled={uploading}
-        />
+        <Button label="Add photo" onPress={handleAddPhoto} disabled={saving} loading={saving} />
       </View>
-
-      {uploading && (
-        <View style={styles.uploadingOverlay}>
-          <ActivityIndicator size="large" color={Colors.leaf} />
-          <Text style={styles.uploadingText}>Uploading photo...</Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -235,9 +310,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    marginTop: Spacing.spacious,
   },
   header: {
     paddingHorizontal: Spacing.default,
@@ -264,11 +337,19 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: Spacing.compact,
+    paddingHorizontal: Spacing.default,
   },
-  row: {
-    justifyContent: "space-between",
-    marginBottom: Spacing.default,
+  hint: {
+    fontSize: Typography.caption1.fontSize,
+    color: Colors.textSecondary,
+    marginVertical: Spacing.default,
+  },
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: Spacing.default,
+    rowGap: Spacing.default,
+    paddingBottom: Spacing.default,
   },
   photoCard: {
     width: PHOTO_SIZE,
@@ -280,6 +361,16 @@ const styles = StyleSheet.create({
     width: "100%",
     height: PHOTO_SIZE,
     backgroundColor: Colors.glass,
+  },
+  photoMissing: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: Spacing.default,
+  },
+  photoMissingText: {
+    fontSize: Typography.caption1.fontSize,
+    color: Colors.textSecondary,
+    textAlign: "center",
   },
   photoInfo: {
     padding: Spacing.compact,
@@ -301,6 +392,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: Spacing.spacious,
     marginTop: Spacing.spacious,
+    paddingHorizontal: Spacing.default,
   },
   emptyEmoji: {
     fontSize: 64,
@@ -316,26 +408,10 @@ const styles = StyleSheet.create({
     fontSize: Typography.body.fontSize,
     color: Colors.textSecondary,
     textAlign: "center",
-    paddingHorizontal: Spacing.default,
     lineHeight: 20,
   },
   footer: {
     paddingHorizontal: Spacing.default,
-    paddingBottom: Spacing.spacious,
-  },
-  uploadingOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  uploadingText: {
-    marginTop: Spacing.default,
-    fontSize: Typography.body.fontSize,
-    color: "#FFFFFF",
+    paddingVertical: Spacing.default,
   },
 });

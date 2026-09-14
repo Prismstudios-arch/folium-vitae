@@ -8,12 +8,20 @@
  * else is both wrong and an App Store guideline violation.
  *
  * Entitlements are never decided here. The client reports what it sees, but
- * the plan on the server is set by RevenueCat's webhook, so premium is not a
- * boolean a client can flip (SPEC §6).
+ * the plan on the server comes from RevenueCat's own records, so premium is
+ * not a boolean a client can flip (SPEC §6).
  */
 
 import { Platform } from "react-native";
 import { REVENUECAT_PUBLIC_KEY } from "@constants/config";
+import { getApiClient } from "./apiClient";
+import { cancelTrialReminder } from "./trialReminder";
+import {
+  TrialUnit,
+  describePeriod,
+  describeTrialDuration,
+  normaliseTrialUnit,
+} from "./subscriptionTerms";
 
 // RevenueCat is a native module and is not present in Expo Go. Importing it
 // there throws at module load, which would take down every screen that
@@ -22,7 +30,7 @@ import { REVENUECAT_PUBLIC_KEY } from "@constants/config";
 type PurchasesModule = typeof import("react-native-purchases").default;
 
 let purchases: PurchasesModule | null = null;
-let configured = false;
+let configuredUserId: string | null = null;
 let unavailableReason: string | null = null;
 
 function loadPurchases(): PurchasesModule | null {
@@ -60,20 +68,32 @@ export function purchasesStatus(): PurchasesStatus {
 }
 
 /**
- * Configure once, keyed to our own user id.
+ * Start RevenueCat for this account, or move it to a new one.
  *
- * Passing appUserID ties the purchase to the account the server already
- * knows about, so the webhook can resolve it without a second mapping.
+ * Nothing called this before. RevenueCat was never configured, so every
+ * offerings request threw, the paywall always said it had nothing to show,
+ * and no purchase could ever be made.
+ *
+ * Keyed to our own user id so the webhook resolves the purchase to the
+ * account the server knows. If the account changes — deleting your data
+ * signs you in as a new anonymous user — RevenueCat is moved with logIn,
+ * since configuring twice is not supported.
  */
 export async function configurePurchases(appUserId: string): Promise<boolean> {
-  if (configured) return true;
+  if (configuredUserId === appUserId) return true;
 
   const sdk = loadPurchases();
   if (!sdk || !REVENUECAT_PUBLIC_KEY) return false;
 
   try {
-    await sdk.configure({ apiKey: REVENUECAT_PUBLIC_KEY, appUserID: appUserId });
-    configured = true;
+    if (configuredUserId === null) {
+      sdk.configure({ apiKey: REVENUECAT_PUBLIC_KEY, appUserID: appUserId });
+    } else {
+      await sdk.logIn(appUserId);
+    }
+
+    configuredUserId = appUserId;
+    void reconcileTrialReminder();
     return true;
   } catch (error) {
     console.error("Failed to configure purchases:", error);
@@ -81,9 +101,35 @@ export async function configurePurchases(appUserId: string): Promise<boolean> {
   }
 }
 
+/**
+ * Drop the "trial ends in 2 days" reminder once it no longer applies.
+ *
+ * Someone who cancels during a trial would otherwise still be told, two days
+ * out, that they are about to be charged — untrue, and alarming.
+ */
+async function reconcileTrialReminder(): Promise<void> {
+  const sdk = loadPurchases();
+  if (!sdk) return;
+
+  try {
+    const info = await sdk.getCustomerInfo();
+    const trialStillRenewing = Object.values(info.entitlements.active).some(
+      (entitlement) => entitlement.periodType === "TRIAL" && entitlement.willRenew
+    );
+
+    if (!trialStillRenewing) {
+      await cancelTrialReminder();
+    }
+  } catch {
+    // Can't tell right now. Leave the reminder as it is.
+  }
+}
+
 export interface TrialTerms {
-  /** e.g. "7 days" — rendered verbatim, never recomputed into marketing copy. */
+  /** e.g. "1 week" — rendered verbatim, never recomputed into marketing copy. */
   duration: string;
+  unit: TrialUnit;
+  count: number;
   /** What happens when it ends, in the store's own localised price. */
   thenPrice: string;
 }
@@ -96,49 +142,66 @@ export interface Plan {
   description: string;
   /** Localised and formatted by the store. Display this, never a computed one. */
   priceString: string;
-  /** "month" | "year" etc., as reported by the store. */
+  /** "month", "3 months" and so on; empty if the store's period is unrecognised. */
   period: string;
+  /** Present only when this Apple ID can actually get the trial. */
   trial: TrialTerms | null;
 }
 
-const PERIOD_LABEL: Record<string, string> = {
-  P1W: "week",
-  P1M: "month",
-  P2M: "2 months",
-  P3M: "3 months",
-  P6M: "6 months",
-  P1Y: "year",
-};
+/**
+ * Whether this Apple ID can still get each product's free trial.
+ *
+ * Apple grants one trial per subscription group. Anyone who has had one and
+ * taps "Start 1 week free" is charged immediately — so the paywall used to
+ * promise every returning user a trial it could not give them.
+ *
+ * Only a definite "eligible" counts. RevenueCat's guidance for an unknown
+ * status is to show the non-trial price, and a paywall that under-promises is
+ * the right way round.
+ */
+async function checkTrialEligibility(
+  sdk: PurchasesModule,
+  productIds: string[]
+): Promise<Record<string, boolean>> {
+  if (productIds.length === 0) return {};
 
-function describePeriod(iso?: string | null): string {
-  if (!iso) return "";
-  return PERIOD_LABEL[iso] ?? iso.replace("P", "").toLowerCase();
-}
+  try {
+    const result = await sdk.checkTrialOrIntroductoryPriceEligibility(productIds);
+    const eligible = sdk.INTRO_ELIGIBILITY_STATUS.INTRO_ELIGIBILITY_STATUS_ELIGIBLE;
 
-function describeTrialDuration(unit?: string | null, count?: number | null): string {
-  if (!unit || !count) return "";
-  const singular = unit.toLowerCase().replace(/s$/, "");
-  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+    return Object.fromEntries(productIds.map((id) => [id, result[id]?.status === eligible]));
+  } catch (error) {
+    console.warn("Couldn't check trial eligibility:", error);
+    return {};
+  }
 }
 
 /**
  * Plans currently on sale, straight from the store.
  *
  * Returns an empty list rather than placeholder plans when nothing is
- * configured. A paywall showing invented prices is worse than one that admits
+ * available. A paywall showing invented prices is worse than one that admits
  * it has nothing to sell.
  */
 export async function getPlans(): Promise<Plan[]> {
   const sdk = loadPurchases();
-  if (!sdk) return [];
+  if (!sdk || configuredUserId === null) return [];
 
   try {
     const offerings = await sdk.getOfferings();
     const packages = offerings.current?.availablePackages ?? [];
+    const eligibility = await checkTrialEligibility(
+      sdk,
+      packages.map((pkg) => pkg.product.identifier)
+    );
 
     return packages.map((pkg) => {
       const product = pkg.product;
       const intro = product.introPrice;
+      const unit = normaliseTrialUnit(intro?.periodUnit);
+      const count = intro?.periodNumberOfUnits ?? 0;
+
+      const offersFreeTrial = !!intro && intro.price === 0 && unit !== null && count > 0;
 
       return {
         id: product.identifier,
@@ -148,9 +211,11 @@ export async function getPlans(): Promise<Plan[]> {
         priceString: product.priceString,
         period: describePeriod(product.subscriptionPeriod),
         trial:
-          intro && intro.price === 0
+          offersFreeTrial && unit !== null && eligibility[product.identifier]
             ? {
-                duration: describeTrialDuration(intro.periodUnit, intro.periodNumberOfUnits),
+                duration: describeTrialDuration(unit, count),
+                unit,
+                count,
                 thenPrice: product.priceString,
               }
             : null,
@@ -171,8 +236,12 @@ export interface PurchaseOutcome {
 
 export async function purchase(packageId: string): Promise<PurchaseOutcome> {
   const sdk = loadPurchases();
-  if (!sdk) {
-    return { status: "failed", activeEntitlements: [], message: unavailableReason ?? "Unavailable." };
+  if (!sdk || configuredUserId === null) {
+    return {
+      status: "failed",
+      activeEntitlements: [],
+      message: unavailableReason ?? "Couldn't connect to the App Store. You have not been charged.",
+    };
   }
 
   try {
@@ -211,8 +280,12 @@ export async function purchase(packageId: string): Promise<PurchaseOutcome> {
 /** Apple requires a restore path for anyone who reinstalls or changes device. */
 export async function restorePurchases(): Promise<PurchaseOutcome> {
   const sdk = loadPurchases();
-  if (!sdk) {
-    return { status: "failed", activeEntitlements: [], message: unavailableReason ?? "Unavailable." };
+  if (!sdk || configuredUserId === null) {
+    return {
+      status: "failed",
+      activeEntitlements: [],
+      message: unavailableReason ?? "Couldn't connect to the App Store. Try again in a moment.",
+    };
   }
 
   try {
@@ -227,6 +300,23 @@ export async function restorePurchases(): Promise<PurchaseOutcome> {
   } catch (error) {
     console.error("Restore failed:", error);
     return { status: "failed", activeEntitlements: [], message: "Couldn't restore. Try again." };
+  }
+}
+
+/**
+ * Have the server apply a purchase or restore now, rather than whenever
+ * RevenueCat's webhook lands.
+ *
+ * Best effort. If it fails the webhook still applies the plan shortly; the
+ * purchase itself is never in doubt.
+ */
+export async function syncEntitlementsWithServer(): Promise<boolean> {
+  try {
+    await getApiClient().syncSubscription();
+    return true;
+  } catch (error) {
+    console.warn("Subscription sync didn't complete; the webhook will apply it:", error);
+    return false;
   }
 }
 

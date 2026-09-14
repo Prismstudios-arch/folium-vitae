@@ -59,12 +59,22 @@ export interface DiagnosisResponse {
   cached: boolean;
 }
 
+/**
+ * Machine-readable reasons the server attaches to some errors, so the app
+ * can offer the right next step instead of pattern-matching prose.
+ */
+export const ErrorCode = {
+  DailyLimit: "DAILY_LIMIT",
+  PremiumRequired: "PREMIUM_REQUIRED",
+} as const;
+
 /** Error carrying the server's message so the UI can show something true. */
 export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly retryable: boolean
+    readonly retryable: boolean,
+    readonly code?: string
   ) {
     super(message);
     this.name = "ApiError";
@@ -73,18 +83,21 @@ export class ApiError extends Error {
 
 function toApiError(error: unknown): ApiError {
   if (axios.isAxiosError(error)) {
-    const axiosError = error as AxiosError<{ error?: { message?: string } }>;
+    const axiosError = error as AxiosError<{ error?: { message?: string; code?: string } }>;
     const status = axiosError.response?.status ?? 0;
     const serverMessage = axiosError.response?.data?.error?.message;
+    const code = axiosError.response?.data?.error?.code;
 
     if (status === 0 || axiosError.code === "ECONNABORTED") {
       return new ApiError("Can't reach the server. Check your connection.", 0, true);
     }
 
-    // 5xx and 429 are worth retrying; a 4xx means the request itself is wrong.
-    const retryable = status >= 500 || status === 429;
+    // 5xx and 429 are usually worth retrying — except a spent daily
+    // allowance, which no retry fixes before midnight. Marking that
+    // retryable put people in a "Try again" loop that could not succeed.
+    const retryable = code !== ErrorCode.DailyLimit && (status >= 500 || status === 429);
 
-    return new ApiError(serverMessage ?? "Something went wrong.", status, retryable);
+    return new ApiError(serverMessage ?? "Something went wrong.", status, retryable, code);
   }
 
   return new ApiError("Something went wrong.", 0, false);
@@ -236,6 +249,44 @@ export class ApiClient {
     await this.clearTokens();
   }
 
+  /**
+   * Permanently delete this account and everything the server holds for it —
+   * identification history and subscription records included.
+   *
+   * The privacy policy promises that Delete in Settings removes account data.
+   * It previously cleared this phone only, and the server kept everything.
+   */
+  async deleteAccount(): Promise<void> {
+    try {
+      await this.client.delete("/api/auth/me");
+    } catch (error) {
+      throw toApiError(error);
+    }
+
+    await this.clearTokens();
+  }
+
+  // MARK: - Subscriptions
+
+  /**
+   * Ask the server to re-read this account's entitlements now.
+   *
+   * The server fetches them from RevenueCat with its secret key — the app
+   * only says "look now", it never says what was bought (SPEC §6). This
+   * exists because webhooks can lag, and someone who has just paid should
+   * not be told Premium is locked.
+   */
+  async syncSubscription(): Promise<{ plan: PublicUser["plan"] }> {
+    try {
+      const { data } = await this.client.post<{ plan: PublicUser["plan"] }>(
+        "/api/subscriptions/sync"
+      );
+      return data;
+    } catch (error) {
+      throw toApiError(error);
+    }
+  }
+
   // MARK: - Identification
 
   /**
@@ -271,8 +322,8 @@ export class ApiClient {
   /**
    * Assess a plant's health.
    *
-   * Premium only — the server enforces that, and returns 403 with a message
-   * the UI shows verbatim rather than inventing its own upsell.
+   * Premium only — the server enforces that and answers 403 with
+   * PREMIUM_REQUIRED.
    */
   async diagnose(
     images: IdentificationImage[],

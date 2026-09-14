@@ -23,6 +23,7 @@ import { lookupCareGuide } from "@services/careDatabase";
 import { getUserPreferences } from "@services/userPreferences";
 import { createPlant, addPhoto } from "@services/database";
 import { useGoBack } from "@hooks/useGoBack";
+import { ErrorCode } from "@services/apiClient";
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -56,10 +57,14 @@ export default function ResultScreen() {
   // toxicity badge here; neither was shown.
   const care = topCandidate ? lookupCareGuide(topCandidate.scientificName) : null;
   const [warnAboutToxicity, setWarnAboutToxicity] = useState(true);
+  const [units, setUnits] = useState<"metric" | "imperial">("metric");
 
   useEffect(() => {
     getUserPreferences()
-      .then((prefs) => setWarnAboutToxicity(prefs.showToxicityWarnings))
+      .then((prefs) => {
+        setWarnAboutToxicity(prefs.showToxicityWarnings);
+        setUnits(prefs.units);
+      })
       .catch(() => {
         // Default to warning. Failing closed on a safety message is the only
         // sensible direction.
@@ -156,6 +161,24 @@ export default function ResultScreen() {
             <ActivityIndicator size="large" color={Colors.leaf} style={styles.spinner} />
             <Text style={styles.subtitle}>Identifying your plant…</Text>
           </>
+        ) : error && error.code === ErrorCode.DailyLimit ? (
+          // Out of identifications for today. No retry can work before
+          // midnight, so this used to be a "Try again" loop — with no mention
+          // of Premium at the one moment it is genuinely relevant.
+          <>
+            <Text style={styles.title}>That's today's identifications</Text>
+            <Text style={styles.recoveryText}>{error.message}</Text>
+            <Text style={styles.recoveryText}>
+              Premium removes the daily limit. Your collection, care notes and reminders keep
+              working either way.
+            </Text>
+            <Button
+              label="See Premium"
+              onPress={() => router.push("/subscription")}
+              style={styles.marginTop}
+            />
+            <SecondaryButton label="Back" onPress={goBack} style={styles.marginTop} />
+          </>
         ) : error ? (
           // Error state
           <>
@@ -218,16 +241,16 @@ export default function ResultScreen() {
               <View style={styles.careSection}>
                 {care.matchedAt === "genus" && (
                   <Text style={styles.careCaveat}>
-                    These notes are for the {care.guide.scientificName} genus, not
+                    These notes cover the {care.guide.scientificName.split(" ")[0]} genus in general, not
                     this exact species.
                   </Text>
                 )}
                 {care.unreviewed && (
                   <Text style={styles.careCaveat}>
-                    Not yet reviewed by a botanist.
+                    Not yet reviewed by a horticulturist.
                   </Text>
                 )}
-                <CareCard guide={care.guide} compactMode={true} />
+                <CareCard guide={care.guide} compactMode={true} units={units} />
               </View>
             )}
 

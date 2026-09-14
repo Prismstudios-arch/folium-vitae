@@ -1,83 +1,142 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SQLite from "expo-sqlite";
 import { SavedPlant, PlantPhoto, WaterLog, WaterAmount } from "@domain/plant";
 import { generateId } from "@utils/id";
+import {
+  persistPhoto,
+  resolvePhotoUri,
+  deletePhotoFile,
+  deleteAllPhotoFiles,
+} from "./photoStorage";
 
 const DB_NAME = "sorrel.db";
-const PLANTS_KEY = "sorrel_plants";
 
-// Initialize database
-let db: SQLite.SQLiteDatabase | null = null;
+let opening: Promise<SQLite.SQLiteDatabase> | null = null;
 
-export async function initializeDatabase(): Promise<void> {
-  try {
-    db = await SQLite.openDatabaseAsync(DB_NAME);
-
-    // Create tables
-    await db.execAsync(`
-      CREATE TABLE IF NOT EXISTS plants (
-        id TEXT PRIMARY KEY,
-        nickname TEXT,
-        scientificName TEXT NOT NULL,
-        commonNames TEXT NOT NULL,
-        location TEXT,
-        acquisitionDate INTEGER,
-        notes TEXT,
-        identificationDate INTEGER NOT NULL,
-        providerData TEXT,
-        confidenceBand TEXT NOT NULL,
-        rawScore REAL NOT NULL,
-        calibratedScore REAL NOT NULL,
-        sortOrder INTEGER DEFAULT 0,
-        isFavorited INTEGER DEFAULT 0,
-        lastSyncedAt INTEGER
-      );
-
-      CREATE TABLE IF NOT EXISTS photos (
-        id TEXT PRIMARY KEY,
-        plantId TEXT NOT NULL,
-        dateTaken INTEGER NOT NULL,
-        imagePath TEXT NOT NULL,
-        imageHash TEXT NOT NULL,
-        caption TEXT,
-        FOREIGN KEY (plantId) REFERENCES plants(id)
-      );
-
-      CREATE TABLE IF NOT EXISTS waterLogs (
-        id TEXT PRIMARY KEY,
-        plantId TEXT NOT NULL,
-        date INTEGER NOT NULL,
-        amount TEXT,
-        notes TEXT,
-        FOREIGN KEY (plantId) REFERENCES plants(id)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_photos_plantId ON photos(plantId);
-      CREATE INDEX IF NOT EXISTS idx_waterLogs_plantId ON waterLogs(plantId);
-      CREATE INDEX IF NOT EXISTS idx_waterLogs_date ON waterLogs(date DESC);
-    `);
-
-    // CREATE TABLE IF NOT EXISTS does nothing when the table already exists,
-    // so a database created before `amount` was added still lacks the column.
-    // SQLite has no ADD COLUMN IF NOT EXISTS; the duplicate-column error is
-    // the expected outcome on an already-migrated database.
-    try {
-      await db.execAsync(`ALTER TABLE waterLogs ADD COLUMN amount TEXT`);
-    } catch {
-      // Column already present.
-    }
-
-    console.log("Database initialized successfully");
-  } catch (error) {
-    console.error("Database initialization failed:", error);
-    throw error;
+/**
+ * The database, opened on first use.
+ *
+ * There used to be an initializeDatabase() that had to run before anything
+ * else — and nothing ever called it. Every function below threw "Database not
+ * initialized", so saving a plant, opening My Plants, logging water, the
+ * journal, export and delete all failed on every device. Opening lazily
+ * removes the ordering requirement: there is no startup step left to forget.
+ *
+ * The promise is shared so that simultaneous first calls open it once. A
+ * failed open is forgotten, so the next call retries instead of replaying
+ * the failure forever.
+ */
+function getDb(): Promise<SQLite.SQLiteDatabase> {
+  if (!opening) {
+    opening = openAndMigrate().catch((error) => {
+      opening = null;
+      console.error("Database initialization failed:", error);
+      throw error;
+    });
   }
+  return opening;
+}
+
+async function openAndMigrate(): Promise<SQLite.SQLiteDatabase> {
+  const db = await SQLite.openDatabaseAsync(DB_NAME);
+
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS plants (
+      id TEXT PRIMARY KEY,
+      nickname TEXT,
+      scientificName TEXT NOT NULL,
+      commonNames TEXT NOT NULL,
+      location TEXT,
+      acquisitionDate INTEGER,
+      notes TEXT,
+      identificationDate INTEGER NOT NULL,
+      providerData TEXT,
+      confidenceBand TEXT NOT NULL,
+      rawScore REAL NOT NULL,
+      calibratedScore REAL NOT NULL,
+      sortOrder INTEGER DEFAULT 0,
+      isFavorited INTEGER DEFAULT 0,
+      lastSyncedAt INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS photos (
+      id TEXT PRIMARY KEY,
+      plantId TEXT NOT NULL,
+      dateTaken INTEGER NOT NULL,
+      imagePath TEXT NOT NULL,
+      imageHash TEXT NOT NULL,
+      caption TEXT,
+      FOREIGN KEY (plantId) REFERENCES plants(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS waterLogs (
+      id TEXT PRIMARY KEY,
+      plantId TEXT NOT NULL,
+      date INTEGER NOT NULL,
+      amount TEXT,
+      notes TEXT,
+      FOREIGN KEY (plantId) REFERENCES plants(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_photos_plantId ON photos(plantId);
+    CREATE INDEX IF NOT EXISTS idx_waterLogs_plantId ON waterLogs(plantId);
+    CREATE INDEX IF NOT EXISTS idx_waterLogs_date ON waterLogs(date DESC);
+  `);
+
+  // CREATE TABLE IF NOT EXISTS does nothing when the table already exists,
+  // so a database created before `amount` was added still lacks the column.
+  // SQLite has no ADD COLUMN IF NOT EXISTS; the duplicate-column error is
+  // the expected outcome on an already-migrated database.
+  try {
+    await db.execAsync(`ALTER TABLE waterLogs ADD COLUMN amount TEXT`);
+  } catch {
+    // Column already present.
+  }
+
+  return db;
+}
+
+/**
+ * Open the database ahead of time.
+ *
+ * Optional — every function opens it on demand. Calling this at launch just
+ * means the first screen to need it isn't the one that waits.
+ */
+export async function initializeDatabase(): Promise<void> {
+  await getDb();
+}
+
+/** One row of `plants`, with its children, as the app's type. */
+function toSavedPlant(row: any, photos: PlantPhoto[], waterLogs: WaterLog[]): SavedPlant {
+  return {
+    id: row.id,
+    nickname: row.nickname ?? undefined,
+    scientificName: row.scientificName,
+    commonNames: JSON.parse(row.commonNames),
+    location: row.location ?? undefined,
+    acquisitionDate: row.acquisitionDate ? new Date(row.acquisitionDate) : undefined,
+    notes: row.notes ?? undefined,
+    identificationDate: new Date(row.identificationDate),
+    providerData: row.providerData ?? undefined,
+    confidenceBand: row.confidenceBand,
+    rawScore: row.rawScore,
+    calibratedScore: row.calibratedScore,
+    photos,
+    waterLogs,
+    sortOrder: row.sortOrder,
+    isFavorited: row.isFavorited === 1,
+    lastSyncedAt: row.lastSyncedAt ? new Date(row.lastSyncedAt) : undefined,
+  } as SavedPlant;
+}
+
+async function withChildren(row: any): Promise<SavedPlant> {
+  const [photos, waterLogs] = await Promise.all([fetchPhotos(row.id), fetchWaterLogs(row.id)]);
+  return toSavedPlant(row, photos, waterLogs);
 }
 
 // MARK: - Plant Operations
 
 export async function createPlant(plant: Omit<SavedPlant, "id" | "photos" | "waterLogs">): Promise<SavedPlant> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   const id = generateId();
   const now = Date.now();
@@ -120,39 +179,11 @@ export async function createPlant(plant: Omit<SavedPlant, "id" | "photos" | "wat
 }
 
 export async function fetchAllPlants(): Promise<SavedPlant[]> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   try {
-    const result = await db.getAllAsync<any>(
-      `SELECT * FROM plants ORDER BY sortOrder ASC`
-    );
-
-    return Promise.all(
-      result.map(async (row) => {
-        const photos = await fetchPhotos(row.id);
-        const waterLogs = await fetchWaterLogs(row.id);
-
-        return {
-          id: row.id,
-          nickname: row.nickname,
-          scientificName: row.scientificName,
-          commonNames: JSON.parse(row.commonNames),
-          location: row.location,
-          acquisitionDate: row.acquisitionDate ? new Date(row.acquisitionDate) : undefined,
-          notes: row.notes,
-          identificationDate: new Date(row.identificationDate),
-          providerData: row.providerData,
-          confidenceBand: row.confidenceBand,
-          rawScore: row.rawScore,
-          calibratedScore: row.calibratedScore,
-          photos,
-          waterLogs,
-          sortOrder: row.sortOrder,
-          isFavorited: row.isFavorited === 1,
-          lastSyncedAt: row.lastSyncedAt ? new Date(row.lastSyncedAt) : undefined,
-        } as SavedPlant;
-      })
-    );
+    const rows = await db.getAllAsync<any>(`SELECT * FROM plants ORDER BY sortOrder ASC`);
+    return Promise.all(rows.map(withChildren));
   } catch (error) {
     console.error("Failed to fetch plants:", error);
     throw error;
@@ -160,38 +191,11 @@ export async function fetchAllPlants(): Promise<SavedPlant[]> {
 }
 
 export async function fetchPlant(id: string): Promise<SavedPlant | null> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   try {
-    const result = await db.getFirstAsync<any>(
-      `SELECT * FROM plants WHERE id = ?`,
-      [id]
-    );
-
-    if (!result) return null;
-
-    const photos = await fetchPhotos(id);
-    const waterLogs = await fetchWaterLogs(id);
-
-    return {
-      id: result.id,
-      nickname: result.nickname,
-      scientificName: result.scientificName,
-      commonNames: JSON.parse(result.commonNames),
-      location: result.location,
-      acquisitionDate: result.acquisitionDate ? new Date(result.acquisitionDate) : undefined,
-      notes: result.notes,
-      identificationDate: new Date(result.identificationDate),
-      providerData: result.providerData,
-      confidenceBand: result.confidenceBand,
-      rawScore: result.rawScore,
-      calibratedScore: result.calibratedScore,
-      photos,
-      waterLogs,
-      sortOrder: result.sortOrder,
-      isFavorited: result.isFavorited === 1,
-      lastSyncedAt: result.lastSyncedAt ? new Date(result.lastSyncedAt) : undefined,
-    } as SavedPlant;
+    const row = await db.getFirstAsync<any>(`SELECT * FROM plants WHERE id = ?`, [id]);
+    return row ? withChildren(row) : null;
   } catch (error) {
     console.error("Failed to fetch plant:", error);
     throw error;
@@ -199,23 +203,25 @@ export async function fetchPlant(id: string): Promise<SavedPlant | null> {
 }
 
 export async function updatePlant(id: string, updates: Partial<SavedPlant>): Promise<void> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   try {
     const sets: string[] = [];
     const values: any[] = [];
 
-    if (updates.nickname !== undefined) {
+    // `in` rather than `!== undefined`: the edit screen passes undefined to
+    // mean "cleared", and skipping those left the old nickname in place.
+    if ("nickname" in updates) {
       sets.push("nickname = ?");
-      values.push(updates.nickname);
+      values.push(updates.nickname ?? null);
     }
-    if (updates.location !== undefined) {
+    if ("location" in updates) {
       sets.push("location = ?");
-      values.push(updates.location);
+      values.push(updates.location ?? null);
     }
-    if (updates.notes !== undefined) {
+    if ("notes" in updates) {
       sets.push("notes = ?");
-      values.push(updates.notes);
+      values.push(updates.notes ?? null);
     }
     if (updates.isFavorited !== undefined) {
       sets.push("isFavorited = ?");
@@ -225,10 +231,7 @@ export async function updatePlant(id: string, updates: Partial<SavedPlant>): Pro
     if (sets.length === 0) return;
 
     values.push(id);
-    await db.runAsync(
-      `UPDATE plants SET ${sets.join(", ")} WHERE id = ?`,
-      values
-    );
+    await db.runAsync(`UPDATE plants SET ${sets.join(", ")} WHERE id = ?`, values);
   } catch (error) {
     console.error("Failed to update plant:", error);
     throw error;
@@ -236,13 +239,25 @@ export async function updatePlant(id: string, updates: Partial<SavedPlant>): Pro
 }
 
 export async function deletePlant(id: string): Promise<void> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   try {
-    // Cascade delete photos and water logs
-    await db.runAsync(`DELETE FROM photos WHERE plantId = ?`, [id]);
-    await db.runAsync(`DELETE FROM waterLogs WHERE plantId = ?`, [id]);
-    await db.runAsync(`DELETE FROM plants WHERE id = ?`, [id]);
+    const photoRows = await db.getAllAsync<{ imagePath: string }>(
+      `SELECT imagePath FROM photos WHERE plantId = ?`,
+      [id]
+    );
+
+    // All or nothing — a half-deleted plant would linger in the list with
+    // its history gone.
+    await db.withTransactionAsync(async () => {
+      await db.runAsync(`DELETE FROM photos WHERE plantId = ?`, [id]);
+      await db.runAsync(`DELETE FROM waterLogs WHERE plantId = ?`, [id]);
+      await db.runAsync(`DELETE FROM plants WHERE id = ?`, [id]);
+    });
+
+    // The confirmation says this removes the plant's photos. Deleting only
+    // the rows left every image sitting on the phone.
+    photoRows.forEach((row) => deletePhotoFile(row.imagePath));
   } catch (error) {
     console.error("Failed to delete plant:", error);
     throw error;
@@ -253,18 +268,18 @@ export async function deletePlant(id: string): Promise<void> {
 
 /** Photo journal for one plant, newest first. */
 export async function fetchPhotos(plantId: string): Promise<PlantPhoto[]> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   try {
-    const result = await db.getAllAsync<any>(
+    const rows = await db.getAllAsync<any>(
       `SELECT * FROM photos WHERE plantId = ? ORDER BY dateTaken DESC`,
       [plantId]
     );
 
-    return result.map((row) => ({
+    return rows.map((row) => ({
       id: row.id,
       dateTaken: new Date(row.dateTaken),
-      imagePath: row.imagePath,
+      imagePath: resolvePhotoUri(row.imagePath),
       imageHash: row.imageHash,
       caption: row.caption ?? undefined,
     }));
@@ -275,42 +290,60 @@ export async function fetchPhotos(plantId: string): Promise<PlantPhoto[]> {
 }
 
 export async function deletePhoto(id: string): Promise<void> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
+
+  const row = await db.getFirstAsync<{ imagePath: string }>(
+    `SELECT imagePath FROM photos WHERE id = ?`,
+    [id]
+  );
+
   await db.runAsync(`DELETE FROM photos WHERE id = ?`, [id]);
+
+  if (row) deletePhotoFile(row.imagePath);
 }
 
+/**
+ * Save a photo to a plant's journal.
+ *
+ * Pass the temporary URI from the camera or picker as imagePath. The file is
+ * copied somewhere permanent first, and the photo returned carries the
+ * permanent URI.
+ */
 export async function addPhoto(plantId: string, photo: Omit<PlantPhoto, "id">): Promise<PlantPhoto> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   const id = generateId();
+  const stored = await persistPhoto(photo.imagePath);
 
   try {
     await db.runAsync(
       `INSERT INTO photos (id, plantId, dateTaken, imagePath, imageHash, caption)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, plantId, photo.dateTaken.getTime(), photo.imagePath, photo.imageHash, photo.caption || null]
+      [id, plantId, photo.dateTaken.getTime(), stored, photo.imageHash, photo.caption || null]
     );
-
-    return { id, ...photo };
   } catch (error) {
+    // Don't leave an orphaned copy behind for a row that was never written.
+    deletePhotoFile(stored);
     console.error("Failed to add photo:", error);
     throw error;
   }
+
+  return { id, ...photo, imagePath: resolvePhotoUri(stored) };
 }
 
 // MARK: - Water Log Operations
 
 /** Watering history for one plant, newest first. */
 export async function fetchWaterLogs(plantId: string): Promise<WaterLog[]> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   try {
-    const result = await db.getAllAsync<any>(
+    const rows = await db.getAllAsync<any>(
       `SELECT * FROM waterLogs WHERE plantId = ? ORDER BY date DESC`,
       [plantId]
     );
 
-    return result.map((row) => ({
+    return rows.map((row) => ({
       id: row.id,
       date: new Date(row.date),
       amount: (row.amount as WaterAmount) ?? undefined,
@@ -323,12 +356,12 @@ export async function fetchWaterLogs(plantId: string): Promise<WaterLog[]> {
 }
 
 export async function deleteWaterLog(id: string): Promise<void> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
   await db.runAsync(`DELETE FROM waterLogs WHERE id = ?`, [id]);
 }
 
 export async function addWaterLog(plantId: string, log: Omit<WaterLog, "id">): Promise<WaterLog> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   const id = generateId();
 
@@ -348,11 +381,11 @@ export async function addWaterLog(plantId: string, log: Omit<WaterLog, "id">): P
 // MARK: - Search & Query
 
 export async function searchPlants(query: string): Promise<SavedPlant[]> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   try {
     const searchPattern = `%${query.toLowerCase()}%`;
-    const result = await db.getAllAsync<any>(
+    const rows = await db.getAllAsync<any>(
       `SELECT * FROM plants WHERE
         LOWER(nickname) LIKE ? OR
         LOWER(scientificName) LIKE ? OR
@@ -361,47 +394,32 @@ export async function searchPlants(query: string): Promise<SavedPlant[]> {
       [searchPattern, searchPattern, searchPattern]
     );
 
-    return Promise.all(
-      result.map(async (row) => {
-        const photos = await fetchPhotos(row.id);
-        const waterLogs = await fetchWaterLogs(row.id);
-
-        return {
-          id: row.id,
-          nickname: row.nickname,
-          scientificName: row.scientificName,
-          commonNames: JSON.parse(row.commonNames),
-          location: row.location,
-          acquisitionDate: row.acquisitionDate ? new Date(row.acquisitionDate) : undefined,
-          notes: row.notes,
-          identificationDate: new Date(row.identificationDate),
-          providerData: row.providerData,
-          confidenceBand: row.confidenceBand,
-          rawScore: row.rawScore,
-          calibratedScore: row.calibratedScore,
-          photos,
-          waterLogs,
-          sortOrder: row.sortOrder,
-          isFavorited: row.isFavorited === 1,
-          lastSyncedAt: row.lastSyncedAt ? new Date(row.lastSyncedAt) : undefined,
-        } as SavedPlant;
-      })
-    );
+    return Promise.all(rows.map(withChildren));
   } catch (error) {
     console.error("Failed to search plants:", error);
     throw error;
   }
 }
 
+/**
+ * Delete every plant, photo and watering log on this device.
+ *
+ * Throws if the photo files can't be removed, so "Delete all data" never
+ * reports success while images are still on the phone.
+ */
 export async function deleteAllData(): Promise<void> {
-  if (!db) throw new Error("Database not initialized");
+  const db = await getDb();
 
   try {
-    await db.execAsync(`
-      DELETE FROM photos;
-      DELETE FROM waterLogs;
-      DELETE FROM plants;
-    `);
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        DELETE FROM photos;
+        DELETE FROM waterLogs;
+        DELETE FROM plants;
+      `);
+    });
+
+    deleteAllPhotoFiles();
   } catch (error) {
     console.error("Failed to delete all data:", error);
     throw error;

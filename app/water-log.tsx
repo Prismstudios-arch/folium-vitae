@@ -4,38 +4,60 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  FlatList,
   Alert,
   ActivityIndicator,
+  TextInput,
+  Linking,
 } from "react-native";
-import { useState, useEffect } from "react";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useState, useEffect, ReactNode } from "react";
+import { useLocalSearchParams } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
 import { WaterLog, WaterAmount } from "@domain/plant";
-import { fetchWaterLogs, addWaterLog, deleteWaterLog } from "@services/database";
+import { fetchWaterLogs, addWaterLog, deleteWaterLog, fetchPlant } from "@services/database";
+import { lookupCareGuide, CareLookupResult } from "@services/careDatabase";
+import { getUserPreferences } from "@services/userPreferences";
+import {
+  refreshWateringReminder,
+  getReminderPermission,
+  requestReminderPermission,
+} from "@services/wateringReminders";
+import {
+  summariseWatering,
+  describeWaterFrequency,
+  describeRhythm,
+  currentSeason,
+  describeSeasonForWatering,
+  Hemisphere,
+} from "@services/wateringInsights";
+import { useGoBack } from "@hooks/useGoBack";
 
 export default function WaterLogScreen() {
-  const router = useRouter();
+  const goBack = useGoBack("/my-plants");
   const { plantId, plantName } = useLocalSearchParams<{
     plantId: string;
     plantName?: string;
   }>();
 
   const [logs, setLogs] = useState<WaterLog[]>([]);
+  const [care, setCare] = useState<CareLookupResult | null>(null);
+  const [hemisphere, setHemisphere] = useState<Hemisphere>("north");
+  const [remindersOn, setRemindersOn] = useState(false);
+  const [nextReminder, setNextReminder] = useState<Date | null>(null);
+  const [reminderChecked, setReminderChecked] = useState(false);
+  const [permission, setPermission] = useState<{ granted: boolean; canAskAgain: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedAmount, setSelectedAmount] = useState<WaterAmount>(WaterAmount.Moderate);
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
-    void loadWaterLogs();
+    void load();
   }, [plantId]);
 
-  const loadWaterLogs = async () => {
+  const load = async () => {
     if (!plantId) {
       setLoading(false);
       return;
@@ -43,20 +65,41 @@ export default function WaterLogScreen() {
 
     setLoading(true);
     try {
-      setLogs(await fetchWaterLogs(plantId));
+      const [history, plant, prefs] = await Promise.all([
+        fetchWaterLogs(plantId),
+        fetchPlant(plantId),
+        getUserPreferences(),
+      ]);
+      setLogs(history);
+      setCare(plant ? lookupCareGuide(plant.scientificName) : null);
+      setHemisphere(prefs.hemisphere);
+      setRemindersOn(prefs.notificationsEnabled);
     } catch (error) {
       console.error("Failed to load watering logs:", error);
       Alert.alert("Couldn't load history", "Your watering history is saved but wouldn't open.");
     } finally {
       setLoading(false);
     }
+
+    void syncReminder();
   };
 
-  const handleDateChange = (event: any, date?: Date) => {
-    if (date) {
-      setSelectedDate(date);
+  /**
+   * Reminders follow the history, so any change to it reschedules. Best
+   * effort: a reminder failing to schedule must never cost the log itself.
+   */
+  const syncReminder = async () => {
+    if (!plantId) return;
+
+    try {
+      setPermission(await getReminderPermission());
+      setNextReminder(await refreshWateringReminder(plantId));
+    } catch (error) {
+      console.warn("Couldn't update watering reminder:", error);
+      setNextReminder(null);
+    } finally {
+      setReminderChecked(true);
     }
-    setShowDatePicker(false);
   };
 
   const handleAddLog = async () => {
@@ -82,9 +125,12 @@ export default function WaterLogScreen() {
     } catch (error) {
       console.error("Failed to save watering log:", error);
       Alert.alert("Couldn't save", "That watering wasn't recorded. Try again.");
+      return;
     } finally {
       setSaving(false);
     }
+
+    void syncReminder();
   };
 
   const handleDeleteLog = (logId: string) => {
@@ -105,7 +151,10 @@ export default function WaterLogScreen() {
             console.error("Failed to delete watering log:", error);
             setLogs(previous);
             Alert.alert("Couldn't delete", "That entry is still there. Try again.");
+            return;
           }
+
+          void syncReminder();
         },
       },
     ]);
@@ -131,51 +180,120 @@ export default function WaterLogScreen() {
     return amount ? emojis[amount] : "💧";
   };
 
+  const header = (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={goBack} accessibilityRole="button">
+        <Text style={styles.backButton}>← Back</Text>
+      </TouchableOpacity>
+      <Text style={styles.title}>Watering Log</Text>
+      {plantName ? <Text style={styles.plant}>{plantName}</Text> : null}
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={styles.container}>
+        {header}
         <ActivityIndicator size="large" color={Colors.leaf} style={styles.loader} />
       </View>
     );
   }
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
-        <View>
-          <Text style={styles.title}>Watering Log</Text>
-          <Text style={styles.plant}>{plantName}</Text>
+  // Reached without a plant, the form would render and every tap would
+  // silently do nothing. Say so instead.
+  if (!plantId) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <View style={styles.emptyHistory}>
+          <Text style={styles.emptyText}>No plant selected</Text>
+          <Text style={styles.emptySubtext}>Open a plant from your collection to log watering.</Text>
         </View>
       </View>
+    );
+  }
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Add Log Section */}
-        <View style={styles.addLogSection}>
-          <Text style={styles.sectionTitle}>📝 Log Watering</Text>
+  const rhythm = summariseWatering(logs);
 
-          {/* Date Picker */}
-          <TouchableOpacity
-            style={styles.dateButton}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <Text style={styles.dateButtonLabel}>Date:</Text>
-            <Text style={styles.dateButtonValue}>{selectedDate.toLocaleDateString()}</Text>
+  const handleAllowReminders = async () => {
+    const result = await requestReminderPermission();
+    setPermission(result);
+    if (result.granted) void syncReminder();
+  };
+
+  // Reminders default to on, but the iOS permission is asked for here — once
+  // there's enough history for a reminder to be useful — rather than cold at
+  // launch, where most people refuse. Never asked before, a reminder would
+  // simply never have fired.
+  let reminder: ReactNode = null;
+  if (remindersOn && reminderChecked && permission) {
+    if (!permission.granted) {
+      if (rhythm && rhythm.medianDays >= 1) {
+        reminder = permission.canAskAgain ? (
+          <TouchableOpacity onPress={handleAllowReminders} accessibilityRole="button">
+            <Text style={styles.reminderAction}>Remind me when it's usually time to check →</Text>
           </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={() => void Linking.openSettings()} accessibilityRole="button">
+            <Text style={styles.reminderAction}>
+              Notifications are off for Sorrel. Turn them on in Settings →
+            </Text>
+          </TouchableOpacity>
+        );
+      }
+    } else if (nextReminder) {
+      reminder = (
+        <Text style={styles.careTip}>
+          We'll remind you to check it on{" "}
+          {nextReminder.toLocaleDateString(undefined, {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+          })}
+          .
+        </Text>
+      );
+    } else {
+      reminder = (
+        <Text style={styles.careTip}>
+          Log a couple of waterings and Sorrel will remind you when it's usually time to check.
+        </Text>
+      );
+    }
+  }
 
-          {showDatePicker && (
+  return (
+    <View style={styles.container}>
+      {header}
+
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.addLogSection}>
+          <Text style={styles.sectionTitle}>Log watering</Text>
+
+          {/* The spinner picker this replaced was closed by its own onChange,
+              which on iOS fires on the first tick of the wheel — so it shut
+              the moment you touched it. The compact picker is always present
+              and opens its own calendar. Future dates are refused: a watering
+              that hasn't happened yet isn't history. */}
+          <View style={styles.dateRow}>
+            <Text style={styles.dateButtonLabel}>Date</Text>
             <DateTimePicker
               value={selectedDate}
               mode="date"
-              display="spinner"
-              onChange={handleDateChange}
+              display="compact"
+              maximumDate={new Date()}
+              onChange={(_event, date) => {
+                if (date) setSelectedDate(date);
+              }}
+              accentColor={Colors.leaf}
             />
-          )}
+          </View>
 
-          {/* Amount Selector */}
-          <Text style={styles.amountLabel}>Amount:</Text>
+          <Text style={styles.amountLabel}>Amount</Text>
           <View style={styles.amountButtons}>
             {[WaterAmount.Light, WaterAmount.Moderate, WaterAmount.Heavy].map((amount) => (
               <TouchableOpacity
@@ -185,6 +303,8 @@ export default function WaterLogScreen() {
                   selectedAmount === amount && styles.amountButtonActive,
                 ]}
                 onPress={() => setSelectedAmount(amount)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedAmount === amount }}
               >
                 <Text style={styles.amountEmoji}>{getAmountEmoji(amount)}</Text>
                 <Text
@@ -193,50 +313,64 @@ export default function WaterLogScreen() {
                     selectedAmount === amount && styles.amountTextActive,
                   ]}
                 >
-                  {amount === "light" ? "Light" : amount === "moderate" ? "Moderate" : "Heavy"}
+                  {amount === WaterAmount.Light
+                    ? "Light"
+                    : amount === WaterAmount.Moderate
+                      ? "Moderate"
+                      : "Heavy"}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Notes */}
-          <Text style={styles.notesLabel}>Notes (optional):</Text>
-          <View style={styles.notesInput}>
-            <Text>📝 </Text>
-            {/* Note: Would use TextInput in real implementation */}
-            <Text style={styles.notesPlaceholder}>Plant looked dry, added fertilizer</Text>
-          </View>
+          {/* Notes — this was a grey Text styled to look like an input, with
+              a comment saying a real one would come later. Nothing could be
+              typed, so every note ever saved was empty. */}
+          <Text style={styles.notesLabel}>Notes (optional)</Text>
+          <TextInput
+            style={styles.notesInput}
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="e.g. soil was bone dry, added feed"
+            placeholderTextColor={Colors.textDisabled}
+            multiline
+            maxLength={280}
+            returnKeyType="done"
+            blurOnSubmit
+          />
 
-          {/* Save Button */}
           <Button
-            label="Log Watering"
+            label="Log watering"
             onPress={handleAddLog}
+            loading={saving}
+            disabled={saving}
           />
         </View>
 
-        {/* History Section */}
         <View style={styles.historySection}>
-          <Text style={styles.sectionTitle}>📋 History</Text>
+          <Text style={styles.sectionTitle}>History</Text>
 
           {logs.length === 0 ? (
             <View style={styles.emptyHistory}>
-              <Text style={styles.emptyText}>No watering logs yet</Text>
-              <Text style={styles.emptySubtext}>Start tracking your plant's watering</Text>
+              <Text style={styles.emptyText}>No watering logged yet</Text>
+              <Text style={styles.emptySubtext}>Log a watering above to start the history.</Text>
             </View>
           ) : (
-            <FlatList
-              data={logs}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              renderItem={({ item }) => (
+            <>
+              <Text style={styles.hint}>Press and hold an entry to delete it.</Text>
+              {/* Plain map rather than a FlatList: a virtualised list nested
+                  in a ScrollView warns and gains nothing at this size. */}
+              {logs.map((item) => (
                 <TouchableOpacity
+                  key={item.id}
                   style={styles.logItem}
                   onLongPress={() => handleDeleteLog(item.id)}
+                  accessibilityHint="Press and hold to delete"
                 >
                   <View style={styles.logContent}>
                     <View style={styles.logHeader}>
                       <Text style={styles.logDate}>
-                        {new Date(item.date).toLocaleDateString("en-US", {
+                        {new Date(item.date).toLocaleDateString(undefined, {
                           weekday: "short",
                           month: "short",
                           day: "numeric",
@@ -245,21 +379,52 @@ export default function WaterLogScreen() {
                       <Text style={styles.logEmoji}>{getAmountEmoji(item.amount)}</Text>
                     </View>
                     <Text style={styles.logAmount}>{getAmountLabel(item.amount)}</Text>
-                    {item.notes && (
-                      <Text style={styles.logNotes}>{item.notes}</Text>
-                    )}
+                    {/* Ternary, not &&: an empty-string note from an older row
+                        would render a bare string and crash React Native. */}
+                    {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
                   </View>
                 </TouchableOpacity>
-              )}
-            />
+              ))}
+            </>
           )}
         </View>
 
-        {/* Care Recommendation */}
+        {/* Watering guidance. Previously a fixed "Based on your logs, water
+            every 3-5 days" shown for every plant, reading no logs — advice
+            that would rot a cactus. Every line now has something real
+            behind it: the species notes, this user's own rhythm, and the
+            season for their hemisphere. */}
         <View style={styles.careSection}>
-          <Text style={styles.careTitle}>💡 Care Tip</Text>
+          <Text style={styles.careTitle}>Watering guidance</Text>
+
+          {care && (
+            <>
+              <Text style={styles.careTip}>
+                {care.matchedAt === "genus"
+                  ? `Plants in this genus usually ${describeWaterFrequency(care.guide.water.frequency)}.`
+                  : `This plant ${describeWaterFrequency(care.guide.water.frequency)}.`}
+              </Text>
+              {care.guide.water.seasonalModifier ? (
+                <Text style={styles.careTip}>{care.guide.water.seasonalModifier}</Text>
+              ) : null}
+              {care.unreviewed && (
+                <Text style={styles.careCaveat}>
+                  These notes haven't been reviewed by a horticulturist yet.
+                </Text>
+              )}
+            </>
+          )}
+
+          {rhythm ? <Text style={styles.careTip}>{describeRhythm(rhythm)}</Text> : null}
+
           <Text style={styles.careTip}>
-            Based on your logs, water this plant every 3-5 days during growing season. Reduce watering in winter.
+            {describeSeasonForWatering(currentSeason(hemisphere))}
+          </Text>
+
+          {reminder}
+
+          <Text style={styles.careCaveat}>
+            Check the soil before watering — light, warmth and pot size change how fast it dries.
           </Text>
         </View>
       </ScrollView>
@@ -273,9 +438,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    marginTop: Spacing.spacious,
   },
   header: {
     paddingHorizontal: Spacing.default,
@@ -315,11 +478,11 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     marginBottom: Spacing.default,
   },
-  dateButton: {
+  dateRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: Spacing.default,
+    paddingVertical: Spacing.compact,
     paddingHorizontal: Spacing.compact,
     backgroundColor: Colors.background,
     borderRadius: 8,
@@ -330,11 +493,6 @@ const styles = StyleSheet.create({
   dateButtonLabel: {
     fontSize: Typography.body.fontSize,
     color: Colors.textSecondary,
-  },
-  dateButtonValue: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-    fontWeight: "600" as any,
   },
   amountLabel: {
     fontSize: Typography.subheadline.fontSize,
@@ -379,8 +537,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.compact,
   },
   notesInput: {
-    flexDirection: "row",
-    alignItems: "center",
+    minHeight: 64,
     paddingHorizontal: Spacing.default,
     paddingVertical: Spacing.compact,
     backgroundColor: Colors.background,
@@ -388,18 +545,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.glass,
     marginBottom: Spacing.default,
-  },
-  notesPlaceholder: {
     fontSize: Typography.body.fontSize,
-    color: Colors.textDisabled,
-    flex: 1,
+    color: Colors.textPrimary,
+    textAlignVertical: "top",
   },
   historySection: {
     paddingVertical: Spacing.loose,
   },
+  hint: {
+    fontSize: Typography.caption1.fontSize,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.compact,
+  },
   emptyHistory: {
     alignItems: "center",
     paddingVertical: Spacing.spacious,
+    paddingHorizontal: Spacing.default,
   },
   emptyText: {
     fontSize: Typography.body.fontSize,
@@ -409,6 +570,7 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontSize: Typography.caption1.fontSize,
     color: Colors.textSecondary,
+    textAlign: "center",
   },
   logItem: {
     backgroundColor: Colors.glass,
@@ -438,7 +600,7 @@ const styles = StyleSheet.create({
   },
   logNotes: {
     fontSize: Typography.caption1.fontSize,
-    color: Colors.textDisabled,
+    color: Colors.textSecondary,
     fontStyle: "italic",
   },
   careSection: {
@@ -446,16 +608,26 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: Spacing.default,
     marginVertical: Spacing.loose,
+    gap: Spacing.compact,
   },
   careTitle: {
     fontSize: Typography.subheadline.fontSize,
     fontWeight: Typography.subheadline.fontWeight as any,
     color: Colors.textPrimary,
-    marginBottom: Spacing.compact,
   },
   careTip: {
     fontSize: Typography.body.fontSize,
     color: Colors.textSecondary,
     lineHeight: 20,
+  },
+  reminderAction: {
+    fontSize: Typography.body.fontSize,
+    color: Colors.leaf,
+    fontWeight: "600" as any,
+  },
+  careCaveat: {
+    fontSize: Typography.caption1.fontSize,
+    color: Colors.textSecondary,
+    fontStyle: "italic",
   },
 });

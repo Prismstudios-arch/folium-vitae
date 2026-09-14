@@ -8,41 +8,63 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { useEffect, useState } from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Colors, Spacing, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
 import { CareCard } from "@components/CareCard";
 import { usePlant } from "@hooks/usePlants";
-import { getCareGuide } from "@services/careDatabase";
-import { SavedPlant, CareGuide, getDisplayName } from "@domain/plant";
+import { useGoBack } from "@hooks/useGoBack";
+import { lookupCareGuide, CareLookupResult } from "@services/careDatabase";
+import { Units } from "@services/careFormatting";
+import { getUserPreferences } from "@services/userPreferences";
+import { cancelWateringReminder } from "@services/wateringReminders";
 import { updatePlant, deletePlant } from "@services/database";
+import { SavedPlant, getDisplayName } from "@domain/plant";
 
 export default function PlantDetailScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const plantId = params.id as string;
+  const goBack = useGoBack("/my-plants");
+  const params = useLocalSearchParams<{ id?: string }>();
+  const plantId = params.id ?? "";
 
-  const { plant, loading, error } = usePlant(plantId);
-  const [careGuide, setCareGuide] = useState<CareGuide | null>(null);
+  const { plant, loading, error, reload } = usePlant(plantId);
+  const [care, setCare] = useState<CareLookupResult | null>(null);
+  const [units, setUnits] = useState<Units>("metric");
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Partial<SavedPlant>>({});
+  const [saving, setSaving] = useState(false);
+
+  // Coming back from the watering log or the journal must show what was
+  // just added. The plant was loaded once on mount, so its history here
+  // stayed stale until the screen was closed and reopened.
+  useFocusEffect(
+    useCallback(() => {
+      void reload({ silent: true });
+    }, [reload])
+  );
 
   useEffect(() => {
-    if (plant) {
-      setEditData({
-        nickname: plant.nickname || "",
-        location: plant.location || "",
-        notes: plant.notes || "",
+    getUserPreferences()
+      .then((prefs) => setUnits(prefs.units))
+      .catch(() => {
+        // Metric default stands.
       });
+  }, []);
 
-      // Load care guide
-      const guide = getCareGuide(plant.scientificName);
-      setCareGuide(guide);
-    }
+  useEffect(() => {
+    if (!plant) return;
+
+    setEditData({
+      nickname: plant.nickname || "",
+      location: plant.location || "",
+      notes: plant.notes || "",
+    });
+
+    // The lookup result, not just the guide, so the genus-level and
+    // unreviewed caveats the result screen shows are shown here too.
+    setCare(lookupCareGuide(plant.scientificName));
   }, [plant]);
-
-  const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     if (!plant || saving) return;
@@ -50,13 +72,14 @@ export default function PlantDetailScreen() {
     setSaving(true);
     try {
       await updatePlant(plant.id, {
-        // Empty strings mean "cleared", not "unset" — store undefined so the
-        // field genuinely empties rather than saving a blank string.
+        // Empty strings mean "cleared" — store undefined so the field
+        // genuinely empties rather than saving a blank string.
         nickname: editData.nickname?.trim() || undefined,
         location: editData.location?.trim() || undefined,
         notes: editData.notes?.trim() || undefined,
       });
 
+      await reload({ silent: true });
       setIsEditing(false);
     } catch (err) {
       console.error("Failed to save plant:", err);
@@ -81,13 +104,18 @@ export default function PlantDetailScreen() {
           onPress: async () => {
             try {
               await deletePlant(plant.id);
-              router.back();
             } catch (err) {
               console.error("Failed to delete plant:", err);
               // Do not navigate away — leaving the screen would imply it
               // worked, and the plant would still be in the list.
               Alert.alert("Couldn't delete", `${getDisplayName(plant)} is still in your collection.`);
+              return;
             }
+
+            // A reminder about a plant that no longer exists would open a
+            // "not found" screen.
+            await cancelWateringReminder(plant.id).catch(() => undefined);
+            goBack();
           },
         },
       ]
@@ -96,7 +124,7 @@ export default function PlantDetailScreen() {
 
   if (loading) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, styles.centred]}>
         <ActivityIndicator size="large" color={Colors.leaf} />
       </View>
     );
@@ -104,29 +132,38 @@ export default function PlantDetailScreen() {
 
   if (error || !plant) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>{error?.message || "Plant not found"}</Text>
-        <Button label="Go Back" onPress={() => router.back()} style={styles.marginTop} />
+      <View style={[styles.container, styles.centred]}>
+        <Text style={styles.errorText}>{error ? "This plant couldn't be loaded." : "Plant not found"}</Text>
+        <Button label="Go back" onPress={goBack} style={styles.marginTop} />
       </View>
     );
   }
 
+  const genus = care?.guide.scientificName.split(" ")[0];
+
   return (
     <ScrollView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backButton}>←</Text>
+        <TouchableOpacity
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
-          <Text style={styles.editButton}>{isEditing ? "Done" : "Edit"}</Text>
+        <TouchableOpacity
+          onPress={() => setIsEditing(!isEditing)}
+          accessibilityRole="button"
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={styles.editButton}>{isEditing ? "Cancel" : "Edit"}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Plant Info */}
       <View style={styles.content}>
         {isEditing ? (
-          <EditableSection>
+          <View style={styles.editableSection}>
             <TextInput
               style={styles.nicknameInput}
               placeholder="Plant nickname"
@@ -154,52 +191,66 @@ export default function PlantDetailScreen() {
               numberOfLines={4}
             />
 
-            <Button label="Save Changes" onPress={handleSave} style={styles.marginTop} />
-          </EditableSection>
+            <Button
+              label="Save changes"
+              onPress={handleSave}
+              loading={saving}
+              disabled={saving}
+              style={styles.marginTop}
+            />
+          </View>
         ) : (
-          <ViewSection>
+          // Ternaries, not &&: an empty string from the database would render
+          // as a bare text node and crash React Native.
+          <View style={styles.viewSection}>
             <Text style={styles.nickname}>{getDisplayName(plant)}</Text>
             <Text style={styles.scientificName}>{plant.scientificName}</Text>
-            {plant.location && <Text style={styles.location}>📍 {plant.location}</Text>}
+            {plant.location ? <Text style={styles.location}>📍 {plant.location}</Text> : null}
 
             <View style={styles.metaInfo}>
-              {plant.acquisitionDate && (
+              {plant.acquisitionDate ? (
                 <Text style={styles.metaText}>
                   📅 Added {new Date(plant.acquisitionDate).toLocaleDateString()}
                 </Text>
-              )}
-              {plant.identificationDate && (
-                <Text style={styles.metaText}>
-                  🔍 Identified {new Date(plant.identificationDate).toLocaleDateString()}
-                </Text>
-              )}
+              ) : null}
+              <Text style={styles.metaText}>
+                🔍 Identified {new Date(plant.identificationDate).toLocaleDateString()}
+              </Text>
             </View>
 
-            {plant.notes && (
+            {plant.notes ? (
               <View style={styles.notesBox}>
                 <Text style={styles.notesLabel}>Notes</Text>
                 <Text style={styles.notesText}>{plant.notes}</Text>
               </View>
-            )}
-          </ViewSection>
+            ) : null}
+          </View>
         )}
 
-        {/* Care Guide */}
-        {careGuide ? (
+        {/* Care guide */}
+        {care ? (
           <>
             <Text style={styles.sectionTitle}>Care Guide</Text>
-            <CareCard guide={careGuide} compactMode={true} />
+            {care.matchedAt === "genus" ? (
+              <Text style={styles.careCaveat}>
+                These notes cover the {genus} genus in general, not this exact species.
+              </Text>
+            ) : null}
+            {care.unreviewed ? (
+              <Text style={styles.careCaveat}>Not yet reviewed by a horticulturist.</Text>
+            ) : null}
+            <CareCard guide={care.guide} compactMode={true} units={units} />
           </>
         ) : (
           <View style={styles.noCareGuide}>
-            <Text style={styles.noCareGuideText}>No specific care guide available yet</Text>
+            <Text style={styles.noCareGuideText}>No care notes for this plant yet</Text>
             <Text style={styles.noCareGuideSubtext}>
-              We're working on adding care information for more plants
+              We'd rather show nothing than guess. More plants are being added.
             </Text>
           </View>
         )}
 
-        {/* Water Log */}
+        {/* Water log */}
         <View style={styles.waterLogSection}>
           <Text style={styles.sectionTitle}>Water Log</Text>
           {plant.waterLogs.length === 0 ? (
@@ -208,7 +259,7 @@ export default function PlantDetailScreen() {
             plant.waterLogs.slice(0, 5).map((log) => (
               <View key={log.id} style={styles.logEntry}>
                 <Text style={styles.logDate}>{new Date(log.date).toLocaleDateString()}</Text>
-                {log.notes && <Text style={styles.logNotes}>{log.notes}</Text>}
+                {log.notes ? <Text style={styles.logNotes}>{log.notes}</Text> : null}
               </View>
             ))
           )}
@@ -225,7 +276,6 @@ export default function PlantDetailScreen() {
           />
         </View>
 
-        {/* Photo journal */}
         <View style={styles.section}>
           <Button
             label="Photo journal"
@@ -239,7 +289,20 @@ export default function PlantDetailScreen() {
           />
         </View>
 
-        {/* Danger Zone */}
+        {/* Nothing linked to the health check, so it could never be reached. */}
+        <View style={styles.section}>
+          <Button
+            label="Check plant health"
+            onPress={() =>
+              router.push({
+                pathname: "/disease-detection",
+                params: { plantId: plant.id, plantName: getDisplayName(plant) },
+              })
+            }
+            variant="secondary"
+          />
+        </View>
+
         <View style={styles.dangerZone}>
           <Button label="Delete plant" onPress={handleDelete} style={styles.deleteButton} />
         </View>
@@ -248,18 +311,15 @@ export default function PlantDetailScreen() {
   );
 }
 
-function EditableSection({ children }: { children: React.ReactNode }) {
-  return <View style={styles.editableSection}>{children}</View>;
-}
-
-function ViewSection({ children }: { children: React.ReactNode }) {
-  return <View style={styles.viewSection}>{children}</View>;
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  centred: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: Spacing.default,
   },
   header: {
     flexDirection: "row",
@@ -269,8 +329,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.default,
   },
   backButton: {
-    fontSize: 24,
+    fontSize: Typography.body.fontSize,
     color: Colors.leaf,
+    fontWeight: "600",
   },
   editButton: {
     fontSize: Typography.body.fontSize,
@@ -310,7 +371,6 @@ const styles = StyleSheet.create({
     fontSize: Typography.body.fontSize,
     color: Colors.textPrimary,
     marginTop: Spacing.default,
-    paddingVertical: Spacing.tight,
     borderColor: Colors.leaf,
     borderWidth: 1,
     borderRadius: 8,
@@ -369,6 +429,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.default,
     marginTop: Spacing.loose,
   },
+  careCaveat: {
+    fontSize: Typography.caption1.fontSize,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.tight,
+  },
   noCareGuide: {
     backgroundColor: Colors.glass,
     borderRadius: 8,
@@ -389,6 +454,7 @@ const styles = StyleSheet.create({
   },
   waterLogSection: {
     marginTop: Spacing.loose,
+    marginBottom: Spacing.loose,
   },
   logEntry: {
     paddingVertical: Spacing.default,
@@ -407,12 +473,12 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: Typography.body.fontSize,
-    color: Colors.textDisabled,
+    color: Colors.textSecondary,
     textAlign: "center",
     paddingVertical: Spacing.default,
   },
   section: {
-    marginBottom: Spacing.loose,
+    marginBottom: Spacing.default,
   },
   dangerZone: {
     marginTop: Spacing.spacious,

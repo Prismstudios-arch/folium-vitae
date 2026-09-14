@@ -155,9 +155,13 @@ export function usePlant(id: string) {
     loadPlant();
   }, [id]);
 
-  const loadPlant = useCallback(async () => {
+  /**
+   * silent: refresh without the full-screen spinner — used when returning
+   * to a screen that is already showing the plant.
+   */
+  const loadPlant = useCallback(async (options?: { silent?: boolean }) => {
     try {
-      setLoading(true);
+      if (!options?.silent) setLoading(true);
       setError(null);
       const data = await fetchPlant(id);
       setPlant(data);

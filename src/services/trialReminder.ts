@@ -45,8 +45,16 @@ export async function scheduleTrialReminder(
     return null;
   }
 
-  const { status } = await Notifications.getPermissionsAsync();
-  if (status !== "granted") {
+  // Asked for here, straight after someone starts a trial, when the reason
+  // is obvious. It used to be checked but never requested, so unless
+  // something else had asked first, the promised reminder was silently never
+  // scheduled.
+  let permission = await Notifications.getPermissionsAsync();
+  if (!permission.granted && permission.canAskAgain) {
+    permission = await Notifications.requestPermissionsAsync();
+  }
+
+  if (!permission.granted) {
     // Not fatal. The same information is on the paywall and in Settings; the
     // notification is a courtesy on top, not the only disclosure.
     return null;
@@ -63,7 +71,7 @@ export async function scheduleTrialReminder(
       title: "Your Sorrel trial ends in 2 days",
       // States the amount, the date, and how to stop it. No urgency framing,
       // no attempt to talk anyone out of cancelling.
-      body: `On ${chargeDay} you'll be charged ${input.priceString} per ${input.period}. To cancel, open Settings › Manage subscription.`,
+      body: `On ${chargeDay} you'll be charged ${input.priceString} per ${input.period}. To cancel, open Sorrel › Settings › Manage subscription.`,
       data: { kind: "trialEnding" },
     },
     // SDK 57 requires the trigger to name its own type; a bare { date } is

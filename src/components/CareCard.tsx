@@ -1,45 +1,76 @@
 import React from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { CareGuide } from "@domain/plant";
+import { CareGuide, ToxicityLevel } from "@domain/plant";
 import { Colors, Spacing, Typography } from "@constants/theme";
+import {
+  Units,
+  describeLight,
+  describeWaterShort,
+  describeSoil,
+  formatTemperatureRange,
+} from "@services/careFormatting";
 import { ToxicityBadge } from "./Card";
 
 interface CareCardProps {
   guide: CareGuide;
   compactMode?: boolean;
+  /** From Settings. The card ignored this and always showed Celsius. */
+  units?: Units;
 }
 
-export function CareCard({ guide, compactMode = false }: CareCardProps) {
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString("en-US", { year: "numeric", month: "short" });
-  };
+/**
+ * Whether the guide records any toxicity. The toxicity object is always
+ * present, so testing it for truthiness put an empty "Toxicity" heading on
+ * every harmless plant.
+ */
+function hasToxicity(guide: CareGuide): boolean {
+  const t = guide.toxicity;
+  return (
+    !!t &&
+    (t.cats !== ToxicityLevel.None || t.dogs !== ToxicityLevel.None || t.humans !== ToxicityLevel.None)
+  );
+}
+
+function ToxicityBadges({ guide }: { guide: CareGuide }) {
+  return (
+    <View style={styles.toxicBadges}>
+      {guide.toxicity.cats !== ToxicityLevel.None && (
+        <ToxicityBadge type="cats" level={guide.toxicity.cats} />
+      )}
+      {guide.toxicity.dogs !== ToxicityLevel.None && (
+        <ToxicityBadge type="dogs" level={guide.toxicity.dogs} />
+      )}
+      {guide.toxicity.humans !== ToxicityLevel.None && (
+        <ToxicityBadge type="humans" level={guide.toxicity.humans} />
+      )}
+    </View>
+  );
+}
+
+export function CareCard({ guide, compactMode = false, units = "metric" }: CareCardProps) {
+  const temperature = formatTemperatureRange(
+    guide.temperature.minCelsius,
+    guide.temperature.maxCelsius,
+    units
+  );
+  const humidity = `${guide.humidity.minPercent}–${guide.humidity.maxPercent}%`;
 
   if (compactMode) {
     return (
       <View style={styles.compactContainer}>
         <Text style={styles.heading}>Care Summary</Text>
 
-        <CareRow icon="💡" label="Light" value={`${guide.light.min} to ${guide.light.max}`} />
-        <CareRow icon="💧" label="Water" value={guide.water.frequency} />
-        <CareRow icon="🌡️" label="Temperature" value={`${guide.temperature.minCelsius}–${guide.temperature.maxCelsius}°C`} />
-        <CareRow icon="💨" label="Humidity" value={`${guide.humidity.minPercent}–${guide.humidity.maxPercent}%`} />
+        <CareRow icon="💡" label="Light" value={describeLight(guide.light)} />
+        <CareRow icon="💧" label="Water" value={describeWaterShort(guide.water.frequency)} />
+        <CareRow icon="🌡️" label="Temperature" value={temperature} />
+        <CareRow icon="💨" label="Humidity" value={humidity} />
 
-        {guide.toxicity && (
+        {hasToxicity(guide) && (
           <View style={styles.row}>
             <Text style={styles.icon}>⚠️</Text>
             <View style={styles.content}>
               <Text style={styles.label}>Toxicity</Text>
-              <View style={styles.toxicBadges}>
-                {guide.toxicity.cats !== "none" && (
-                  <ToxicityBadge type="cats" level={guide.toxicity.cats} />
-                )}
-                {guide.toxicity.dogs !== "none" && (
-                  <ToxicityBadge type="dogs" level={guide.toxicity.dogs} />
-                )}
-                {guide.toxicity.humans !== "none" && (
-                  <ToxicityBadge type="humans" level={guide.toxicity.humans} />
-                )}
-              </View>
+              <ToxicityBadges guide={guide} />
             </View>
           </View>
         )}
@@ -47,91 +78,72 @@ export function CareCard({ guide, compactMode = false }: CareCardProps) {
     );
   }
 
-  // Full care card
+  // Ternaries rather than && throughout: an empty string from the care data
+  // would otherwise render as a bare text node and crash React Native.
   return (
     <ScrollView style={styles.fullContainer}>
-      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>{guide.commonNames[0]}</Text>
+        <Text style={styles.title}>{guide.commonNames[0] ?? guide.scientificName}</Text>
         <Text style={styles.scientific}>{guide.scientificName}</Text>
-        {guide.taxonomy && <Text style={styles.taxonomy}>{guide.taxonomy}</Text>}
+        {guide.taxonomy ? <Text style={styles.taxonomy}>{guide.taxonomy}</Text> : null}
       </View>
 
-      {/* Review Info */}
-      {guide.lastReviewedAt && (
+      {guide.lastReviewedAt ? (
         <Text style={styles.reviewDate}>
-          Care notes reviewed {formatDate(guide.lastReviewedAt)}
+          Care notes reviewed{" "}
+          {new Date(guide.lastReviewedAt).toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+          })}
         </Text>
-      )}
+      ) : null}
 
-      {/* Light */}
-      <CareSection icon="💡" title="Light Requirements">
-        <Text style={styles.text}>
-          {guide.light.min} to {guide.light.max}
-        </Text>
-        {guide.light.notes && <Text style={styles.notes}>{guide.light.notes}</Text>}
+      <CareSection icon="💡" title="Light">
+        <Text style={styles.text}>{describeLight(guide.light)}</Text>
+        {guide.light.notes ? <Text style={styles.notes}>{guide.light.notes}</Text> : null}
       </CareSection>
 
-      {/* Water */}
       <CareSection icon="💧" title="Watering">
-        <Text style={styles.text}>{guide.water.frequency}</Text>
-        {guide.water.notes && <Text style={styles.notes}>{guide.water.notes}</Text>}
-        {guide.water.seasonalModifier && (
-          <Text style={styles.seasonal}>Season: {guide.water.seasonalModifier}</Text>
-        )}
+        <Text style={styles.text}>{describeWaterShort(guide.water.frequency)}</Text>
+        {guide.water.notes ? <Text style={styles.notes}>{guide.water.notes}</Text> : null}
+        {guide.water.seasonalModifier ? (
+          <Text style={styles.seasonal}>Through the year: {guide.water.seasonalModifier}</Text>
+        ) : null}
       </CareSection>
 
-      {/* Soil */}
       <CareSection icon="🌍" title="Soil">
-        <Text style={styles.text}>{guide.soil.type}</Text>
-        {guide.soil.drainage && <Text style={styles.notes}>{guide.soil.drainage}</Text>}
+        <Text style={styles.text}>{describeSoil(guide.soil.type)}</Text>
+        {guide.soil.drainage ? <Text style={styles.notes}>{guide.soil.drainage}</Text> : null}
       </CareSection>
 
-      {/* Temperature */}
       <CareSection icon="🌡️" title="Temperature">
-        <Text style={styles.text}>
-          {guide.temperature.minCelsius}–{guide.temperature.maxCelsius}°C (
-          {guide.temperature.minCelsius * 1.8 + 32}–{guide.temperature.maxCelsius * 1.8 + 32}°F)
-        </Text>
+        <Text style={styles.text}>{temperature}</Text>
       </CareSection>
 
-      {/* Humidity */}
       <CareSection icon="💨" title="Humidity">
-        <Text style={styles.text}>
-          {guide.humidity.minPercent}–{guide.humidity.maxPercent}%
-        </Text>
+        <Text style={styles.text}>{humidity}</Text>
       </CareSection>
 
-      {/* Toxicity */}
-      {guide.toxicity && (
+      {hasToxicity(guide) && (
         <CareSection icon="⚠️" title="Toxicity">
-          <View style={styles.toxicBadges}>
-            {guide.toxicity.cats !== "none" && <ToxicityBadge type="cats" level={guide.toxicity.cats} />}
-            {guide.toxicity.dogs !== "none" && <ToxicityBadge type="dogs" level={guide.toxicity.dogs} />}
-            {guide.toxicity.humans !== "none" && (
-              <ToxicityBadge type="humans" level={guide.toxicity.humans} />
-            )}
-          </View>
-          {guide.toxicity.notes && <Text style={styles.notes}>{guide.toxicity.notes}</Text>}
+          <ToxicityBadges guide={guide} />
+          {guide.toxicity.notes ? <Text style={styles.notes}>{guide.toxicity.notes}</Text> : null}
         </CareSection>
       )}
 
-      {/* Feeding */}
-      {guide.feeding && (
+      {guide.feeding ? (
         <CareSection icon="🌱" title="Feeding">
           <Text style={styles.text}>{guide.feeding}</Text>
         </CareSection>
-      )}
+      ) : null}
 
-      {/* Repotting */}
-      {guide.repotting && (
+      {guide.repotting ? (
         <CareSection icon="🪴" title="Repotting">
           <Text style={styles.text}>{guide.repotting}</Text>
         </CareSection>
-      )}
+      ) : null}
 
-      {/* Common Problems */}
-      {guide.commonProblems && guide.commonProblems.length > 0 && (
+      {guide.commonProblems && guide.commonProblems.length > 0 ? (
         <CareSection icon="🐛" title="Common Problems">
           {guide.commonProblems.map((problem, idx) => (
             <Text key={idx} style={styles.text}>
@@ -139,14 +151,11 @@ export function CareCard({ guide, compactMode = false }: CareCardProps) {
             </Text>
           ))}
         </CareSection>
-      )}
+      ) : null}
 
-      {/* Growth Info */}
       <View style={styles.footer}>
-        {guide.growthHabit && (
-          <Text style={styles.footerText}>Growth: {guide.growthHabit}</Text>
-        )}
-        {guide.matureSize && <Text style={styles.footerText}>Size: {guide.matureSize}</Text>}
+        {guide.growthHabit ? <Text style={styles.footerText}>Growth: {guide.growthHabit}</Text> : null}
+        {guide.matureSize ? <Text style={styles.footerText}>Size: {guide.matureSize}</Text> : null}
       </View>
     </ScrollView>
   );
@@ -296,6 +305,7 @@ const styles = StyleSheet.create({
   },
   toxicBadges: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: Spacing.tight,
     marginBottom: Spacing.default,
   },

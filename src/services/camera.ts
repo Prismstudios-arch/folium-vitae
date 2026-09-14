@@ -33,6 +33,9 @@ export function useCamera() {
   const [isTorchOn, setIsTorchOn] = useState(false);
 
   const hasPermission = permission?.granted ?? false;
+  // False once someone has refused: iOS will not show the prompt again and
+  // requesting silently does nothing, so callers must offer Settings instead.
+  const canAskAgain = permission?.canAskAgain ?? true;
 
   const requestCameraPermission = useCallback(async () => {
     const result = await requestPermission();
@@ -72,6 +75,7 @@ export function useCamera() {
   return {
     cameraRef,
     hasPermission,
+    canAskAgain,
     requestCameraPermission,
     isTorchOn,
     toggleTorch,

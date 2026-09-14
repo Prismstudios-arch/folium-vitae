@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator} from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking } from "react-native";
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { CameraView } from "expo-camera";
@@ -13,7 +13,7 @@ type CaptureState = "idle" | "focusing" | "capturing" | "checking" | "failed" | 
 
 export default function ScanScreen() {
   const router = useRouter();
-  const { cameraRef, hasPermission, requestCameraPermission, isTorchOn, toggleTorch, capturePhoto } =
+  const { cameraRef, hasPermission, canAskAgain, requestCameraPermission, isTorchOn, toggleTorch, capturePhoto } =
     useCamera();
 
   const [state, setState] = useState<CaptureState>("idle");
@@ -123,11 +123,25 @@ export default function ScanScreen() {
   };
 
   if (!hasPermission) {
+    // Once someone has said no, iOS never shows the prompt again and
+    // requesting silently does nothing — so "Enable Camera" was a dead
+    // button on a screen with no way out. Offer Settings, and a way back.
     return (
       <View style={styles.permissionContainer}>
         <Text style={styles.title}>Camera access required</Text>
-        <Text style={styles.subtitle}>We need permission to identify plants</Text>
-        <Button label="Enable Camera" onPress={requestCameraPermission} style={styles.marginTop} />
+        <Text style={styles.subtitle}>
+          {canAskAgain
+            ? "Sorrel needs your camera to identify plants."
+            : "Camera access is turned off for Sorrel. You can turn it back on in Settings."}
+        </Text>
+        <Button
+          label={canAskAgain ? "Allow camera" : "Open Settings"}
+          onPress={canAskAgain ? requestCameraPermission : () => void Linking.openSettings()}
+          style={styles.marginTop}
+        />
+        <TouchableOpacity onPress={goBack} style={styles.marginTop} accessibilityRole="button">
+          <Text style={styles.subtitle}>Go back</Text>
+        </TouchableOpacity>
       </View>
     );
   }

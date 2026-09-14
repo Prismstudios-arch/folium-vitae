@@ -204,9 +204,9 @@ function PlantGridItem({ plant, onPress, onDelete }: PlantGridItemProps) {
     <TouchableOpacity style={styles.gridItem} onPress={() => onPress(plant)}>
       {coverPhoto ? (
         <Image
-          // imagePath is already a full file:// URI from the camera or the
-          // picker. Prefixing another scheme produced file://file:///… and
-          // every thumbnail silently failed to load.
+          // imagePath arrives as a full file:// URI — the database resolves
+          // the stored relative path. Prefixing another scheme produced
+          // file://file:///… and every thumbnail silently failed to load.
           source={{ uri: coverPhoto.imagePath }}
           style={styles.gridImage}
           resizeMode="cover"

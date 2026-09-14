@@ -14,8 +14,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.prismstudios.sorrel",
       "infoPlist": {
-        "NSCameraUsageDescription": "Sorrel uses your camera to identify plants from photos.",
-        "NSPhotoLibraryUsageDescription": "Sorrel uses your photo library to identify plants you have already photographed.",
+        "NSCameraUsageDescription": "Sorrel uses your camera to identify plants, check their health, and add photos to your plant journal.",
+        "NSPhotoLibraryUsageDescription": "Sorrel uses your photo library to identify plants from photos you have already taken, and to add them to your plant journal.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -41,7 +41,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Sorrel uses your camera to identify plants from photos.",
+          "cameraPermission": "Sorrel uses your camera to identify plants, check their health, and add photos to your plant journal.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -49,7 +49,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Sorrel uses your photo library to identify plants you have already photographed."
+          "photosPermission": "Sorrel uses your photo library to identify plants from photos you have already taken, and to add them to your plant journal."
         }
       ],
       [

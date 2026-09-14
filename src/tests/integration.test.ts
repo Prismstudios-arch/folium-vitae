@@ -1,6 +1,10 @@
 /**
- * Integration Tests
- * Tests for cross-cutting concerns and end-to-end flows
+ * Integration tests for preferences as the app uses them across a session.
+ *
+ * Two tests were removed from this file: a "full CRUD cycle" whose every line
+ * was commented out, and an error-message test that asserted
+ * expect(true).toBe(true). Both passed while checking nothing, which is
+ * worse than not having them — they made coverage look real.
  */
 
 import {
@@ -8,7 +12,6 @@ import {
   completeOnboarding,
   saveUserPreferences,
 } from "@services/userPreferences";
-import { usePlants } from "@hooks/usePlants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 jest.mock("@react-native-async-storage/async-storage");
@@ -19,7 +22,6 @@ describe("User Onboarding Flow", () => {
   });
 
   it("should gate navigation until onboarding complete", async () => {
-    // New user starts unboarded
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
 
     const prefs = await getUserPreferences();
@@ -31,49 +33,12 @@ describe("User Onboarding Flow", () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
     (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
 
-    // User completes onboarding
     await completeOnboarding("app-store");
 
-    // Verify onboarding completed
     const callArg = (AsyncStorage.setItem as jest.Mock).mock.calls[0][1];
     const saved = JSON.parse(callArg);
 
     expect(saved.hasCompletedOnboarding).toBe(true);
-  });
-});
-
-describe("Plant Lifecycle", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it("should support full CRUD cycle", async () => {
-    const mockPlant = {
-      id: "plant-1",
-      scientificName: "Monstera deliciosa",
-      commonNames: ["Swiss Cheese Plant"],
-      nickname: "My Monstera",
-      location: "Living Room",
-      acquisitionDate: new Date().toISOString(),
-      identificationDate: new Date().toISOString(),
-      notes: "Got this from a friend",
-    };
-
-    // Create
-    // const { addPlant } = usePlants();
-    // await addPlant(mockPlant);
-
-    // Read (covered by usePlants hook tests)
-
-    // Update
-    // const updated = { ...mockPlant, nickname: "Big Green" };
-    // await updatePlant(updated.id, updated);
-
-    // Delete
-    // await deletePlant(mockPlant.id);
-
-    // Note: Full integration would require actual database initialization
-    // This is tested at the component level in E2E tests
   });
 });
 
@@ -86,13 +51,11 @@ describe("Settings Persistence", () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
     (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
 
-    // User changes preferences
     await saveUserPreferences({
       units: "imperial",
       hemisphere: "south",
     });
 
-    // Verify stored
     const callArg = (AsyncStorage.setItem as jest.Mock).mock.calls[0][1];
     const saved = JSON.parse(callArg);
 
@@ -130,14 +93,7 @@ describe("Error Recovery", () => {
 
     const prefs = await getUserPreferences();
 
-    // Should fall back to defaults
     expect(prefs.units).toBe("metric");
     expect(prefs.hemisphere).toBe("north");
-  });
-
-  it("should show user-friendly error messages", async () => {
-    // This would be tested at the UI layer
-    // Services should provide honest error messages
-    expect(true).toBe(true);
   });
 });

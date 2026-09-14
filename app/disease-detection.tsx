@@ -5,198 +5,280 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
+  Linking,
 } from "react-native";
-import { useState, useRef } from "react";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useState, useRef, useCallback } from "react";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Colors, Spacing, Typography } from "@constants/theme";
-import { Button } from "@components/Button";
-import { getApiClient, ApiError, DiagnosisResponse } from "@services/apiClient";
+import { Button, SecondaryButton } from "@components/Button";
+import {
+  getApiClient,
+  ApiError,
+  ErrorCode,
+  DiagnosisResponse,
+  DiseaseFinding,
+} from "@services/apiClient";
 import { holdCapture, toIdentificationImage } from "@services/capture";
+import { useGoBack } from "@hooks/useGoBack";
+
+/** "checking" until the server says; "unknown" when it can't be reached. */
+type PlanState = "checking" | "free" | "paid" | "unknown";
+
+/**
+ * Capturing keeps the camera mounted. The previous version swapped the
+ * camera for a spinner the instant the shutter was pressed, unmounting the
+ * view while takePictureAsync was still using it.
+ */
+type Phase = "idle" | "capturing" | "analysing";
+
+/**
+ * The provider's probability, in words. Same thresholds as identification
+ * (0.75 and 0.5) so the app never describes one number two ways.
+ */
+function describeLikelihood(probability: number): string {
+  if (probability >= 0.75) return "Fairly sure";
+  if (probability >= 0.5) return "Leaning this way";
+  return "Not sure — treat this as a guess";
+}
 
 export default function DiseaseDetectionScreen() {
   const router = useRouter();
-  const { plantId } = useLocalSearchParams();
+  const goBack = useGoBack("/my-plants");
+  const { plantId, plantName } = useLocalSearchParams<{ plantId?: string; plantName?: string }>();
+
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [planState, setPlanState] = useState<PlanState>("checking");
+  const [phase, setPhase] = useState<Phase>("idle");
   const [diagnosis, setDiagnosis] = useState<DiagnosisResponse | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
+
+  // Health checks are Premium. Free users used to find that out only after
+  // photographing the leaf and waiting on an upload. Checked on focus, not
+  // just mount, so someone returning from the paywall isn't still gated.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      getApiClient()
+        .getQuota()
+        .then((quota) => {
+          if (active) setPlanState(quota.plan === "free" ? "free" : "paid");
+        })
+        .catch(() => {
+          // Offline or not signed in. Let them try — the server enforces the
+          // plan either way, and its answer is shown below.
+          if (active) setPlanState("unknown");
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
 
   /**
    * Photograph the affected part and have the server assess it.
    *
-   * There is no local fallback. This previously waited two seconds and
-   * reported "healthy, 95% confident" for any photo at all — which would
-   * tell somebody with a dying plant to stop looking into it.
+   * There is no local fallback. An early version waited two seconds and
+   * reported "healthy, 95% confident" for any photo at all.
    */
   const handleAnalyzePhoto = async () => {
-    if (!permission?.granted) {
-      await requestPermission();
-      return;
-    }
+    if (phase !== "idle") return;
 
-    setIsAnalyzing(true);
     setError(null);
+    setPhase("capturing");
 
     try {
-      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.7, base64: true });
+      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.7 });
 
       if (!photo?.uri) {
         throw new ApiError("Couldn't take that photo. Try again.", 0, true);
       }
 
+      setPhase("analysing");
+
       // Same pipeline as identification: downscaled and stripped of EXIF
       // before it leaves the phone.
-      const capture = await holdCapture(photo.uri, photo.base64 ?? "");
+      const capture = await holdCapture(photo.uri, "");
 
       setDiagnosis(
         await getApiClient().diagnose(
           [toIdentificationImage(capture)],
           capture.hash,
-          typeof plantId === "string" ? plantId : undefined
+          plantId || undefined
         )
       );
     } catch (err) {
-      setError(err instanceof ApiError ? err : new ApiError("Something went wrong.", 0, true));
+      const apiError =
+        err instanceof ApiError ? err : new ApiError("Something went wrong. Try again.", 0, true);
+
+      if (apiError.code === ErrorCode.PremiumRequired || apiError.status === 403) {
+        setPlanState("free");
+      } else {
+        setError(apiError);
+      }
     } finally {
-      setIsAnalyzing(false);
+      setPhase("idle");
     }
   };
 
-  const handleRequestExpertHelp = () => {
-    router.push({
-      pathname: "/expert-escalation",
-      params: { plantId },
-    });
-  };
+  // Every state gets a way out. Only the error state had a Back button, so
+  // the camera, permission and results screens could only be left by a
+  // swipe gesture most people don't know is there.
+  const header = (
+    <View style={styles.header}>
+      <TouchableOpacity
+        onPress={goBack}
+        accessibilityRole="button"
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <Text style={styles.backButton}>← Back</Text>
+      </TouchableOpacity>
+      <Text style={styles.title}>Check plant health</Text>
+      {plantName ? <Text style={styles.subtitle}>{plantName}</Text> : null}
+    </View>
+  );
 
-  if (isAnalyzing) {
+  if (planState === "checking" || phase === "analysing") {
     return (
       <View style={styles.container}>
+        {header}
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.leaf} />
-          <Text style={styles.loadingText}>Analyzing plant health...</Text>
+          {phase === "analysing" ? (
+            <Text style={styles.loadingText}>Looking at the leaves…</Text>
+          ) : null}
         </View>
       </View>
     );
   }
 
+  if (planState === "free") {
+    return (
+      <ScrollView style={styles.container}>
+        {header}
+        <View style={styles.body}>
+          <Text style={styles.statusTitle}>Health checks are part of Premium</Text>
+          <Text style={styles.bodyText}>
+            Photograph a leaf that looks wrong and Sorrel suggests the most likely causes, with
+            what to try first.
+          </Text>
+          <Text style={styles.bodyText}>
+            Your free identifications, care notes and watering reminders carry on either way.
+          </Text>
+          <View style={styles.actionsSection}>
+            <Button label="See Premium" onPress={() => router.push("/subscription")} />
+            <SecondaryButton label="Not now" onPress={goBack} style={styles.secondaryAction} />
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
+
   if (error) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.errorContent}>
-        <Text style={styles.statusEmoji}>🌱</Text>
-        <Text style={styles.statusTitle}>Couldn't check this one</Text>
-        <Text style={styles.errorMessage}>{error.message}</Text>
-
-        <View style={styles.actionsSection}>
-          {/* Only offer a retry when retrying could plausibly work. On a 403
-              the plan is the problem, and the button would just fail again. */}
-          {error.retryable ? (
-            <Button label="Try again" onPress={() => setError(null)} />
-          ) : error.status === 403 ? (
-            <Button label="See Premium" onPress={() => router.push("/subscription")} />
-          ) : (
-            <Button label="Back" onPress={() => router.back()} />
-          )}
+      <ScrollView style={styles.container}>
+        {header}
+        <View style={styles.body}>
+          <Text style={styles.statusTitle}>Couldn't check this one</Text>
+          <Text style={styles.bodyText}>{error.message}</Text>
+          <View style={styles.actionsSection}>
+            {/* A retry only where one could plausibly work. */}
+            {error.retryable ? (
+              <Button label="Try again" onPress={() => setError(null)} />
+            ) : (
+              <Button label="Back" onPress={goBack} />
+            )}
+          </View>
         </View>
       </ScrollView>
     );
   }
 
   if (diagnosis) {
-    const confidence = diagnosis.isHealthy
+    const likelihood = diagnosis.isHealthy
       ? diagnosis.healthyProbability
       : 1 - diagnosis.healthyProbability;
 
     return (
       <ScrollView style={styles.container}>
+        {header}
+
         <View style={styles.statusContainer}>
-          <Text style={styles.statusEmoji}>{diagnosis.isHealthy ? "✅" : "⚠️"}</Text>
           <Text style={styles.statusTitle}>
-            {diagnosis.isHealthy ? "Looks healthy" : "Something's wrong"}
+            {diagnosis.isHealthy ? "Looks healthy" : "Something looks wrong"}
           </Text>
           <Text style={styles.confidence}>
-            {Math.round(confidence * 100)}% confident
+            {describeLikelihood(likelihood)} · {Math.round(likelihood * 100)}%
             {diagnosis.cached ? " · from an earlier check" : ""}
           </Text>
         </View>
 
         {diagnosis.diseases.length > 0 && (
           <View style={styles.diseasesSection}>
-            <Text style={styles.sectionTitle}>Most likely causes</Text>
+            {/* The provider suggests conditions even for a healthy plant.
+                Calling those "most likely causes" of a problem it just said
+                isn't there would contradict the headline. */}
+            <Text style={styles.sectionTitle}>
+              {diagnosis.isHealthy ? "Worth ruling out" : "Most likely causes"}
+            </Text>
 
-            {/* Ranked with likelihoods rather than asserting one answer. A
-                yellow leaf is genuinely ambiguous (SPEC §3.4). */}
             {diagnosis.diseases.map((disease) => (
-              <View key={disease.id} style={styles.diseaseItem}>
-                <View style={styles.diseaseHeader}>
-                  <Text style={styles.diseaseName}>{disease.name}</Text>
-                  <Text style={styles.diseaseLikelihood}>
-                    {Math.round(disease.probability * 100)}%
-                  </Text>
-                </View>
-
-                {disease.description ? (
-                  <Text style={styles.diseaseDescription}>{disease.description}</Text>
-                ) : null}
-
-                {disease.treatment?.prevention?.length ? (
-                  <View style={styles.treatmentBlock}>
-                    <Text style={styles.treatmentLabel}>What to do</Text>
-                    {disease.treatment.prevention.map((step, index) => (
-                      <View key={index} style={styles.recommendationItem}>
-                        <Text style={styles.bullet}>•</Text>
-                        <Text style={styles.recommendationText}>{step}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
+              <DiseaseCard key={disease.id} disease={disease} />
             ))}
           </View>
         )}
 
-        {/* SPEC §10: guidance, not a pathology lab, and never phrased as
-            medical advice. */}
+        {/* SPEC §10: guidance, not a pathology lab. */}
         <View style={styles.disclaimer}>
           <Text style={styles.disclaimerText}>
-            This is guidance, not a plant pathology lab. If several causes look
-            similar, change one thing at a time and give it a week before judging.
+            This is guidance, not a plant pathology lab. If several causes look similar, change one
+            thing at a time and give it a week before judging.
           </Text>
         </View>
 
         <View style={styles.actionsSection}>
-          <Button label="Check again" onPress={() => setDiagnosis(null)} />
-          <TouchableOpacity style={styles.retryButton} onPress={handleRequestExpertHelp}>
-            <Text style={styles.retryText}>Ask a human</Text>
-          </TouchableOpacity>
+          <Button label="Check another photo" onPress={() => setDiagnosis(null)} />
+          <SecondaryButton label="Done" onPress={goBack} style={styles.secondaryAction} />
         </View>
       </ScrollView>
     );
   }
 
-  // Permission has to be granted before the camera can mount at all.
-  if (!permission?.granted) {
+  if (!permission) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Check plant health</Text>
-          <Text style={styles.subtitle}>Photograph the part that looks wrong</Text>
-        </View>
+        {header}
+        <ActivityIndicator size="large" color={Colors.leaf} style={styles.loadingContainer} />
+      </View>
+    );
+  }
 
-        <View style={styles.content}>
-          <View style={styles.iconContainer}>
-            <Text style={styles.icon}>🔍</Text>
-          </View>
-          <Text style={styles.description}>
-            Sorrel needs your camera to look at the affected leaves.
-          </Text>
-        </View>
-
-        <View style={styles.footer}>
-          <Button label="Enable camera" onPress={() => requestPermission()} />
+  if (!permission.granted) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <View style={styles.body}>
+          <Text style={styles.icon}>🔍</Text>
+          {permission.canAskAgain ? (
+            <>
+              <Text style={styles.bodyText}>
+                Sorrel needs your camera to look at the affected leaves.
+              </Text>
+              <Button label="Allow camera" onPress={() => void requestPermission()} />
+            </>
+          ) : (
+            <>
+              {/* After a refusal iOS never shows the prompt again, so a
+                  request button would do nothing at all. */}
+              <Text style={styles.bodyText}>
+                Camera access is turned off for Sorrel. You can turn it back on in Settings.
+              </Text>
+              <Button label="Open Settings" onPress={() => void Linking.openSettings()} />
+            </>
+          )}
         </View>
       </View>
     );
@@ -204,29 +286,113 @@ export default function DiseaseDetectionScreen() {
 
   return (
     <View style={styles.container}>
-      {/* The camera has to be mounted for a capture to be possible. Without
-          this the ref stays null and every analysis fails silently. */}
-      <CameraView ref={cameraRef} style={styles.camera} facing="back" />
+      {header}
 
-      <View style={styles.tipsOverlay}>
-        <Text style={styles.tipsTitle}>Get close to the problem</Text>
-        <Text style={styles.tip}>• Fill the frame with the affected leaf</Text>
-        <Text style={styles.tip}>• Good light, no harsh shadows</Text>
-        <Text style={styles.tip}>• Include the underside if you see pests</Text>
+      {/* Controls sit beside the camera, not inside it: children of
+          CameraView don't reliably receive touches under the new
+          architecture. */}
+      <View style={styles.cameraWrap}>
+        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+
+        <View style={styles.tipsOverlay} pointerEvents="none">
+          <Text style={styles.tipsTitle}>Get close to the problem</Text>
+          <Text style={styles.tip}>• Fill the frame with the affected leaf</Text>
+          <Text style={styles.tip}>• Good light, no harsh shadows</Text>
+          <Text style={styles.tip}>• Include the underside if you see pests</Text>
+        </View>
       </View>
 
       <View style={styles.footer}>
-        <Button label="Take photo" onPress={handleAnalyzePhoto} />
+        <Button
+          label="Take photo"
+          onPress={handleAnalyzePhoto}
+          loading={phase === "capturing"}
+          disabled={phase !== "idle"}
+        />
       </View>
     </View>
   );
 }
 
+function DiseaseCard({ disease }: { disease: DiseaseFinding }) {
+  const treatment = disease.treatment;
+
+  return (
+    <View style={styles.diseaseItem}>
+      <View style={styles.diseaseHeader}>
+        <Text style={styles.diseaseName}>{disease.name}</Text>
+        <Text style={styles.diseaseLikelihood}>{Math.round(disease.probability * 100)}%</Text>
+      </View>
+
+      {disease.description ? (
+        <Text style={styles.diseaseDescription}>{disease.description}</Text>
+      ) : null}
+
+      {/* The provider sends biological, chemical and prevention advice.
+          Only prevention was shown, under the heading "What to do" — which
+          is what to do next time, not about the problem in front of you. */}
+      <TreatmentList label="Try first" steps={treatment?.biological} />
+      <TreatmentList
+        label="If that doesn't help"
+        steps={treatment?.chemical}
+        caution="Use any product exactly as its label says, and keep treated plants away from pets and children."
+      />
+      <TreatmentList label="Stop it coming back" steps={treatment?.prevention} />
+    </View>
+  );
+}
+
+function TreatmentList({
+  label,
+  steps,
+  caution,
+}: {
+  label: string;
+  steps?: string[];
+  caution?: string;
+}) {
+  if (!steps?.length) return null;
+
+  return (
+    <View style={styles.treatmentBlock}>
+      <Text style={styles.treatmentLabel}>{label}</Text>
+      {steps.map((step, index) => (
+        <View key={index} style={styles.recommendationItem}>
+          <Text style={styles.bullet}>•</Text>
+          <Text style={styles.recommendationText}>{step}</Text>
+        </View>
+      ))}
+      {caution ? <Text style={styles.caution}>{caution}</Text> : null}
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  header: {
+    paddingHorizontal: Spacing.default,
+    paddingVertical: Spacing.default,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.glass,
+  },
+  backButton: {
+    fontSize: Typography.body.fontSize,
+    color: Colors.leaf,
+    fontWeight: "600" as any,
+    marginBottom: Spacing.compact,
+  },
+  title: {
+    fontSize: Typography.headline.fontSize,
+    fontWeight: Typography.headline.fontWeight as any,
+    color: Colors.textPrimary,
+  },
+  subtitle: {
+    fontSize: Typography.body.fontSize,
+    color: Colors.textSecondary,
+    marginTop: Spacing.tight,
   },
   loadingContainer: {
     flex: 1,
@@ -239,61 +405,48 @@ const styles = StyleSheet.create({
     fontSize: Typography.body.fontSize,
     color: Colors.textSecondary,
   },
-  header: {
-    paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.spacious,
-    paddingBottom: Spacing.default,
-  },
-  title: {
-    fontSize: Typography.headline.fontSize,
-    fontWeight: Typography.headline.fontWeight as any,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.compact,
-  },
-  subtitle: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textSecondary,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: Spacing.default,
-    justifyContent: "center",
-  },
-  iconContainer: {
-    alignItems: "center",
-    marginBottom: Spacing.loose,
+  body: {
+    padding: Spacing.loose,
   },
   icon: {
-    fontSize: 64,
-  },
-  description: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
+    fontSize: 48,
     textAlign: "center",
     marginBottom: Spacing.loose,
-    lineHeight: 24,
   },
-  tipsSection: {
-    backgroundColor: Colors.glass,
-    borderRadius: 12,
+  bodyText: {
+    fontSize: Typography.body.fontSize,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+    marginBottom: Spacing.default,
+  },
+  cameraWrap: {
+    flex: 1,
+    overflow: "hidden",
+  },
+  tipsOverlay: {
+    position: "absolute",
+    top: Spacing.default,
+    left: Spacing.default,
+    right: Spacing.default,
+    backgroundColor: "rgba(12, 42, 31, 0.78)",
+    borderRadius: 10,
     padding: Spacing.default,
-    marginBottom: Spacing.loose,
   },
   tipsTitle: {
     fontSize: Typography.subheadline.fontSize,
     fontWeight: Typography.subheadline.fontWeight as any,
-    color: Colors.textPrimary,
+    color: "#FFFFFF",
     marginBottom: Spacing.compact,
   },
   tip: {
     fontSize: Typography.body.fontSize,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.compact,
+    color: "rgba(255, 255, 255, 0.85)",
+    marginBottom: Spacing.tight,
     lineHeight: 20,
   },
   footer: {
     paddingHorizontal: Spacing.default,
-    paddingBottom: Spacing.spacious,
+    paddingVertical: Spacing.default,
   },
   statusContainer: {
     alignItems: "center",
@@ -301,10 +454,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.default,
     borderBottomWidth: 1,
     borderBottomColor: Colors.glass,
-  },
-  statusEmoji: {
-    fontSize: 48,
-    marginBottom: Spacing.compact,
   },
   statusTitle: {
     fontSize: Typography.headline.fontSize,
@@ -315,33 +464,22 @@ const styles = StyleSheet.create({
   confidence: {
     fontSize: Typography.body.fontSize,
     color: Colors.textSecondary,
-  },
-  camera: {
-    flex: 1,
-  },
-  tipsOverlay: {
-    position: "absolute",
-    top: Spacing.extra,
-    left: Spacing.default,
-    right: Spacing.default,
-    backgroundColor: "rgba(12, 42, 31, 0.78)",
-    borderRadius: 10,
-    padding: Spacing.default,
-  },
-  errorContent: {
-    padding: Spacing.loose,
-    paddingTop: Spacing.extra,
-    alignItems: "center",
-  },
-  errorMessage: {
-    ...Typography.body,
-    color: Colors.textSecondary,
     textAlign: "center",
-    marginTop: Spacing.tight,
   },
   diseasesSection: {
     paddingHorizontal: Spacing.default,
     paddingVertical: Spacing.loose,
+  },
+  sectionTitle: {
+    fontSize: Typography.subheadline.fontSize,
+    fontWeight: Typography.subheadline.fontWeight as any,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.default,
+  },
+  // A column. This was a row with space-between, which laid the name,
+  // description and treatment side by side in one squashed line.
+  diseaseItem: {
+    paddingVertical: Spacing.default,
     borderBottomWidth: 1,
     borderBottomColor: Colors.glass,
   },
@@ -349,6 +487,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
+  },
+  diseaseName: {
+    flex: 1,
+    marginRight: Spacing.default,
+    fontSize: Typography.body.fontSize,
+    fontWeight: "600" as any,
+    color: Colors.textPrimary,
   },
   diseaseLikelihood: {
     ...Typography.caption1,
@@ -365,49 +510,13 @@ const styles = StyleSheet.create({
   },
   treatmentLabel: {
     ...Typography.caption1,
+    fontWeight: "600" as any,
     color: Colors.textPrimary,
     marginBottom: Spacing.compact,
   },
-  disclaimer: {
-    marginHorizontal: Spacing.default,
-    marginTop: Spacing.loose,
-    padding: Spacing.default,
-    backgroundColor: Colors.surface,
-    borderRadius: 8,
-  },
-  disclaimerText: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-  },
-  sectionTitle: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.default,
-  },
-  diseaseItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: Spacing.compact,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.glass,
-  },
-  diseaseName: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-  },
-  severity: {
-    fontSize: Typography.caption1.fontSize,
-    fontWeight: "600" as any,
-  },
-  recommendationsSection: {
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.loose,
-  },
   recommendationItem: {
     flexDirection: "row",
-    marginBottom: Spacing.default,
+    marginBottom: Spacing.compact,
   },
   bullet: {
     fontSize: Typography.body.fontSize,
@@ -421,18 +530,26 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 20,
   },
+  caution: {
+    ...Typography.caption1,
+    color: Colors.toxicity,
+    marginTop: Spacing.tight,
+  },
+  disclaimer: {
+    marginHorizontal: Spacing.default,
+    padding: Spacing.default,
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+  },
+  disclaimerText: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+  },
   actionsSection: {
     paddingHorizontal: Spacing.default,
     paddingVertical: Spacing.loose,
   },
-  retryButton: {
+  secondaryAction: {
     marginTop: Spacing.default,
-    paddingVertical: Spacing.default,
-    alignItems: "center",
-  },
-  retryText: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.leaf,
-    fontWeight: "600" as any,
   },
 });
