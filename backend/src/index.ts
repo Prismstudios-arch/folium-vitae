@@ -9,7 +9,8 @@
  *                 device and enforcing quota where a client cannot edit it
  *  /api/diagnose  health assessment, Premium only
  *  /api/quota     server-side scan allowance
- *  /api/webhooks  RevenueCat entitlements — the only thing that sets a plan
+ *  /api/subscriptions  re-read the caller's entitlements from RevenueCat
+ *  /api/webhooks  RevenueCat entitlements — plans only ever follow RevenueCat's records
  *
  * There is no plants, preferences or notifications route. The app keeps the
  * collection in local SQLite and works offline, so those endpoints existed
@@ -36,6 +37,7 @@ import { quotaRoutes } from "./routes/quota";
 import { identifyRoutes } from "./routes/identify";
 import { webhookRoutes } from "./routes/webhooks";
 import { diagnoseRoutes } from "./routes/diagnose";
+import { subscriptionRoutes } from "./routes/subscriptions";
 import { isProviderConfigured } from "./services/identifyProvider";
 
 const app: Express = express();
@@ -138,6 +140,7 @@ app.use("/api/identify", identifyRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/diagnose", diagnoseRoutes);
 app.use("/api/quota", quotaRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
 
 // ============================
 // Error Handling

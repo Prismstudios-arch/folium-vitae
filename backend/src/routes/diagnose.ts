@@ -83,7 +83,8 @@ diagnoseRoutes.post(
 
     if (user.plan === "free") {
       throw ApiError.forbidden(
-        "Health checks are part of Premium. Your daily identifications are unaffected."
+        "Health checks are part of Premium. Your daily identifications are unaffected.",
+        "PREMIUM_REQUIRED"
       );
     }
 

@@ -31,8 +31,9 @@ export class ApiError extends Error implements HttpError {
     return new ApiError(401, message);
   }
 
-  static forbidden(message: string = "Forbidden") {
-    return new ApiError(403, message);
+  /** code: machine-readable reason the app can act on, e.g. PREMIUM_REQUIRED. */
+  static forbidden(message: string = "Forbidden", code?: string) {
+    return new ApiError(403, message, code ? { code } : undefined);
   }
 
   static notFound(message: string = "Not found") {
@@ -43,8 +44,9 @@ export class ApiError extends Error implements HttpError {
     return new ApiError(409, message, details);
   }
 
-  static tooManyRequests(message: string = "Too many requests") {
-    return new ApiError(429, message);
+  /** code: machine-readable reason the app can act on, e.g. DAILY_LIMIT. */
+  static tooManyRequests(message: string = "Too many requests", code?: string) {
+    return new ApiError(429, message, code ? { code } : undefined);
   }
 
   /**
@@ -108,6 +110,10 @@ export function errorHandler(
       message: clientMessage,
       statusCode,
       timestamp,
+      // Sent in every environment, unlike details. Without it the app can't
+      // tell a spent daily allowance from a transient rate limit — both are
+      // 429 — and offered "Try again" for a limit that lasts until midnight.
+      ...(typeof err.details?.code === "string" && { code: err.details.code }),
       ...(process.env.NODE_ENV === "development" && {
         details: err.details,
         stack: err.stack?.split("\n").slice(0, 5),

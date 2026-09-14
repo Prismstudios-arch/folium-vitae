@@ -106,8 +106,11 @@ identifyRoutes.post(
     const quota = await Users.getQuota(userId);
 
     if (quota.remaining <= 0) {
+      // The reset is at 00:00 UTC (CURRENT_DATE on the database), so say
+      // that. "Midnight" is an hour wrong for the UK half the year.
       throw ApiError.tooManyRequests(
-        `Daily limit reached. Your ${quota.limit} scans reset at midnight.`
+        `You've used all ${quota.limit} of today's identifications. They reset at 00:00 UTC.`,
+        "DAILY_LIMIT"
       );
     }
 

@@ -144,3 +144,30 @@ authRoutes.get(
     res.json({ user: Users.toPublicUser(user) });
   })
 );
+
+/**
+ * DELETE /api/auth/me
+ *
+ * Deletes the account outright — the users row and, by cascade, its
+ * identification history, subscription record, preferences and stats. Not
+ * the soft delete: a row with deleted_at set still holds everything, and the
+ * privacy policy says Delete removes account data.
+ *
+ * Idempotent. If the first attempt deleted the row but the response was
+ * lost, the retry must report success rather than "not found".
+ *
+ * This does not cancel an App Store subscription — only Apple can — and the
+ * app says so before anyone confirms.
+ */
+authRoutes.delete(
+  "/me",
+  requireAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.auth!.sub;
+    const removed = await Users.hardDelete(userId);
+
+    logger.info(removed ? `Deleted account ${userId}` : `Delete requested for absent account ${userId}`);
+
+    res.status(204).end();
+  })
+);

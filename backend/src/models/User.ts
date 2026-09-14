@@ -223,6 +223,20 @@ export async function softDelete(userId: string): Promise<void> {
   );
 }
 
+/**
+ * Delete a user row outright. ON DELETE CASCADE removes everything keyed to
+ * it: identifications, subscriptions, preferences, stats.
+ *
+ * Returns whether a row was removed.
+ */
+export async function hardDelete(userId: string): Promise<boolean> {
+  const removed = await queryOne<{ id: string }>(
+    `DELETE FROM users WHERE id = $1 RETURNING id`,
+    [userId]
+  );
+  return removed !== null;
+}
+
 export function toPublicUser(row: UserRow) {
   return {
     id: row.id,
