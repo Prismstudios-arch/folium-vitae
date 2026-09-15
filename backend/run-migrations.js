@@ -81,11 +81,40 @@ async function run() {
       }
     }
 
+    await ensureRowLevelSecurity(client);
+
     console.log(ran > 0 ? `\nDone — ${ran} migration(s) applied.` : "\nDone — already up to date.");
   } finally {
     client.release();
     await pool.end();
   }
+}
+
+/**
+ * Turn Row-Level Security on for any public table that doesn't have it.
+ *
+ * Supabase exposes public tables through its REST API, and a table without
+ * RLS is open to anyone holding the project's public key (see
+ * 004_lock_down_public_api.sql). The backend connects as the table owner, so
+ * RLS never restricts it — which also means nothing would notice a new table
+ * shipping without it. Checking on every run closes that gap.
+ */
+async function ensureRowLevelSecurity(client) {
+  const { rows } = await client.query(`
+    SELECT c.relname
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity
+  `);
+
+  for (const { relname } of rows) {
+    await client.query(`ALTER TABLE public.${quoteIdentifier(relname)} ENABLE ROW LEVEL SECURITY`);
+    console.log(`  enabled row-level security on ${relname}`);
+  }
+}
+
+function quoteIdentifier(name) {
+  return `"${String(name).replace(/"/g, '""')}"`;
 }
 
 run().catch((error) => {
