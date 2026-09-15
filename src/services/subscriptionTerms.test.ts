@@ -9,10 +9,31 @@
 
 import {
   describePeriod,
+  describePlanName,
   normaliseTrialUnit,
   describeTrialDuration,
   addTrialLength,
 } from "./subscriptionTerms";
+
+describe("describePlanName", () => {
+  // The store's own display name was typed by hand and showed "annual" in
+  // lower case on the paywall. The name now comes from the billing period.
+  it("names single-unit plans", () => {
+    expect(describePlanName("P1Y")).toBe("Yearly");
+    expect(describePlanName("P1M")).toBe("Monthly");
+    expect(describePlanName("P1W")).toBe("Weekly");
+  });
+
+  it("describes multi-unit plans", () => {
+    expect(describePlanName("P3M")).toBe("Every 3 months");
+    expect(describePlanName("P6M")).toBe("Every 6 months");
+  });
+
+  it("returns null so the caller can fall back to the store's name", () => {
+    expect(describePlanName(undefined)).toBeNull();
+    expect(describePlanName("monthly")).toBeNull();
+  });
+});
 
 const START = new Date(2026, 2, 1, 12, 0, 0); // 1 March 2026
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 86_400_000);

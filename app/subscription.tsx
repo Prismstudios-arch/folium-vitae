@@ -340,6 +340,8 @@ function PlanCard({ plan, selected, onPress }: { plan: Plan; selected: boolean; 
         {/* The store's own localised string: what's shown is what's charged. */}
         <Text style={styles.planPriceText}>{plan.priceString}</Text>
         {plan.period ? <Text style={styles.planPeriod}>per {plan.period}</Text> : null}
+        {/* Secondary to the amount billed, which stays the prominent figure. */}
+        {plan.pricePerMonth ? <Text style={styles.planPeriod}>{plan.pricePerMonth} a month</Text> : null}
       </View>
     </Pressable>
   );

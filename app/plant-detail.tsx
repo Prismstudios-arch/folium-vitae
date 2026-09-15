@@ -15,6 +15,7 @@ import { usePlant } from "@hooks/usePlants";
 import { useGoBack } from "@hooks/useGoBack";
 import { lookupCareGuide, CareLookupResult } from "@services/careDatabase";
 import { Units } from "@services/careFormatting";
+import type { Hemisphere } from "@services/wateringInsights";
 import { getUserPreferences } from "@services/userPreferences";
 import { cancelWateringReminder } from "@services/wateringReminders";
 import { updatePlant, deletePlant } from "@services/database";
@@ -34,6 +35,10 @@ export default function PlantDetailScreen() {
   const { plant, loading, error, reload } = usePlant(plantId);
   const [care, setCare] = useState<CareLookupResult | null>(null);
   const [units, setUnits] = useState<Units>("metric");
+  const [hemisphere, setHemisphere] = useState<Hemisphere>("north");
+  // Warnings default on: failing closed on a safety message is the only
+  // sensible direction.
+  const [showToxicity, setShowToxicity] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Partial<SavedPlant>>({});
   const [saving, setSaving] = useState(false);
@@ -48,7 +53,11 @@ export default function PlantDetailScreen() {
 
   useEffect(() => {
     getUserPreferences()
-      .then((prefs) => setUnits(prefs.units))
+      .then((prefs) => {
+        setUnits(prefs.units);
+        setHemisphere(prefs.hemisphere);
+        setShowToxicity(prefs.showToxicityWarnings);
+      })
       .catch(() => undefined);
   }, []);
 
@@ -238,21 +247,12 @@ export default function PlantDetailScreen() {
 
             <Text style={styles.sectionTitle}>Care</Text>
             {care ? (
-              <>
-                {care.matchedAt === "genus" || care.unreviewed ? (
-                  <Text style={styles.caveat}>
-                    {[
-                      care.matchedAt === "genus"
-                        ? `These notes cover the ${care.guide.scientificName.split(" ")[0]} genus in general, not this exact species.`
-                        : null,
-                      care.unreviewed ? "Not yet reviewed by a horticulturist." : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  </Text>
-                ) : null}
-                <CareCard guide={care.guide} units={units} />
-              </>
+              <CareCard
+                care={care}
+                units={units}
+                hemisphere={hemisphere}
+                toxicity={showToxicity ? "full" : "hidden"}
+              />
             ) : (
               <View style={styles.noCare}>
                 <IconTile icon="book.closed.fill" color={Tiles.grey} size={36} />

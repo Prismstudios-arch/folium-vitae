@@ -1,9 +1,9 @@
 /**
  * Care knowledge lookup.
  *
- * Data lives in src/data/careGuides.json rather than in this file, so a wrong
- * record can be corrected — eventually by a remote delta — without shipping a
- * new build (SPEC §4).
+ * Data lives in src/data/care/ rather than in this file, so a wrong record can
+ * be corrected — eventually by a remote delta — without shipping a new build
+ * (SPEC §4).
  *
  * The lookup is deliberately forgiving about names. Providers return
  * "Monstera deliciosa Liebm.", cultivar names in quotes, and current
@@ -11,8 +11,17 @@
  * string match finds almost none of those.
  */
 
-import { CareGuide, LightLevel, WaterFrequency, SoilType, ToxicityLevel } from "@domain/plant";
-import careData from "../data/careGuides.json";
+import {
+  CareDifficulty,
+  CareGuide,
+  CarePlacement,
+  CareSource,
+  LightLevel,
+  SoilType,
+  ToxicityLevel,
+  WaterFrequency,
+} from "@domain/plant";
+import { CARE_SOURCES, GENUS_RECORDS, SPECIES_RECORDS } from "../data/care";
 
 // ---------------------------------------------------------------------------
 // Name normalisation
@@ -22,8 +31,9 @@ import careData from "../data/careGuides.json";
  * Reduce a botanical name to "genus species".
  *
  * Strips the naming authority ("Liebm."), cultivar names ("'Thai
- * Constellation'"), and infraspecific ranks ("var. borsigiana") — none of
- * which change the care advice, but all of which break an exact match.
+ * Constellation'"), hybrid signs ("Alocasia × amazonica") and infraspecific
+ * ranks ("var. borsigiana") — none of which change the care advice, but all
+ * of which break an exact match.
  */
 export function normaliseName(name: string): string {
   return String(name)
@@ -32,7 +42,8 @@ export function normaliseName(name: string): string {
     .replace(/\s*"[^"]*"/g, "")
     .replace(/\([^)]*\)/g, "")
     .replace(/\s*\b(var|subsp|ssp|cv|f)\b\.?\s.*$/, "")
-    .replace(/[^a-z\s]/g, " ")
+    .replace(/[^a-z\s-]/g, " ")
+    .replace(/(^|\s)x(\s|$)/g, " ")
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -56,22 +67,31 @@ interface RawGuide {
   family: string;
   genus: string;
   confidence: "species" | "genus";
+  difficulty: string;
+  placement: string;
   light: { min: string; max: string; notes?: string };
-  water: { frequency: string; notes?: string; seasonalModifier?: string };
-  soil: { type: string; notes?: string; drainage?: string };
+  water: { frequency: string; notes?: string; growingSeason?: string; restingSeason?: string };
+  soil: { type: string; notes?: string };
   temperature: { minCelsius: number; maxCelsius: number; notes?: string };
   humidity: { minPercent: number; maxPercent: number; notes?: string };
   toxicity: { cats: string; dogs: string; humans: string; notes?: string };
   feeding?: string;
   repotting?: string;
+  pruning?: string;
   propagation?: string;
-  commonProblems?: string[];
+  problems: Array<{ symptom: string; cause: string; fix: string }>;
   growthHabit?: string;
   matureSize?: string;
-  hardinessZone?: string;
   sourceRefs: string[];
   reviewedBy: string | null;
   lastReviewedAt: string | null;
+}
+
+function resolveSources(refs: string[]): CareSource[] {
+  return refs.flatMap((id) => {
+    const source = CARE_SOURCES[id];
+    return source ? [{ id, ...source }] : [];
+  });
 }
 
 function toCareGuide(raw: RawGuide): CareGuide {
@@ -79,7 +99,10 @@ function toCareGuide(raw: RawGuide): CareGuide {
     id: raw.id,
     scientificName: raw.scientificName,
     commonNames: raw.commonNames,
-    taxonomy: `Family: ${raw.family}, Genus: ${raw.genus}`,
+    family: raw.family,
+    genus: raw.genus,
+    difficulty: raw.difficulty as CareDifficulty,
+    placement: raw.placement as CarePlacement,
     light: {
       min: raw.light.min as LightLevel,
       max: raw.light.max as LightLevel,
@@ -88,12 +111,12 @@ function toCareGuide(raw: RawGuide): CareGuide {
     water: {
       frequency: raw.water.frequency as WaterFrequency,
       notes: raw.water.notes,
-      seasonalModifier: raw.water.seasonalModifier,
+      growingSeason: raw.water.growingSeason,
+      restingSeason: raw.water.restingSeason,
     },
     soil: {
       type: raw.soil.type as SoilType,
       notes: raw.soil.notes,
-      drainage: raw.soil.drainage,
     },
     temperature: raw.temperature,
     humidity: raw.humidity,
@@ -105,22 +128,20 @@ function toCareGuide(raw: RawGuide): CareGuide {
     },
     feeding: raw.feeding,
     repotting: raw.repotting,
+    pruning: raw.pruning,
     propagation: raw.propagation,
-    commonProblems: raw.commonProblems,
+    problems: raw.problems ?? [],
     growthHabit: raw.growthHabit,
     matureSize: raw.matureSize,
-    hardinessZone: raw.hardinessZone,
-    sourceRefs: raw.sourceRefs,
+    sources: resolveSources(raw.sourceRefs ?? []),
     reviewedBy: raw.reviewedBy ?? undefined,
     lastReviewedAt: raw.lastReviewedAt ? new Date(raw.lastReviewedAt) : undefined,
     confidence: raw.confidence,
   };
 }
 
-const speciesGuides: RawGuide[] = careData.guides as RawGuide[];
-const genusGuides: RawGuide[] = careData.genusFallbacks as RawGuide[];
-
-export const SEEDED_CARE_GUIDES: CareGuide[] = speciesGuides.map(toCareGuide);
+const speciesGuides = SPECIES_RECORDS as RawGuide[];
+const genusGuides = GENUS_RECORDS as RawGuide[];
 
 /**
  * Every name a species record answers to — its accepted name plus its
@@ -203,11 +224,6 @@ export function getCareGuide(scientificName: string): CareGuide | null {
   return lookupCareGuide(scientificName)?.guide ?? null;
 }
 
-export function getCareGuideByGenus(genus: string): CareGuide | null {
-  const guide = byGenus.get(genus.toLowerCase());
-  return guide ? toCareGuide(guide) : null;
-}
-
 export function searchCareGuides(query: string): CareGuide[] {
   const needle = query.toLowerCase().trim();
   if (!needle) return [];
@@ -222,7 +238,7 @@ export function searchCareGuides(query: string): CareGuide[] {
     .map(toCareGuide);
 }
 
-/** How much of the database is filled in — used by the seeding script. */
+/** How much of the library is filled in, and how much of it is attributed. */
 export function careDatabaseStats() {
   return {
     species: speciesGuides.length,

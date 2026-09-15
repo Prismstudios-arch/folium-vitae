@@ -26,6 +26,23 @@ export function describePeriod(iso?: string | null): string {
   return count === 1 ? unit : `${count} ${unit}s`;
 }
 
+const PLAN_NAME: Record<string, string> = { D: "Daily", W: "Weekly", M: "Monthly", Y: "Yearly" };
+
+/**
+ * A plan's name, from the period it bills for: "Yearly", "Every 3 months".
+ *
+ * The store's display name is whatever was typed into App Store Connect, and
+ * "annual" in lower case turned up as a plan's title. The period is
+ * structured, so the name can't drift from what's actually charged. Null for
+ * a period this doesn't recognise, so the caller can fall back to the store.
+ */
+export function describePlanName(iso?: string | null): string | null {
+  const match = iso ? /^P(\d+)([DWMY])$/.exec(iso) : null;
+  if (!match) return null;
+
+  return Number(match[1]) === 1 ? PLAN_NAME[match[2]] : `Every ${describePeriod(iso)}`;
+}
+
 /** RevenueCat reports trial units as "DAY", "WEEK" and so on. */
 export function normaliseTrialUnit(unit?: string | null): TrialUnit | null {
   switch (unit?.toUpperCase()) {

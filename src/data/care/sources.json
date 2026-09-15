@@ -1,0 +1,14 @@
+{
+  "aspca-cats": {
+    "title": "ASPCA Animal Poison Control Center — plants toxic and non-toxic to cats",
+    "short": "ASPCA plant list for cats",
+    "url": "https://www.aspca.org/pet-care/animal-poison-control/cats-plant-list",
+    "covers": "toxicity"
+  },
+  "aspca-dogs": {
+    "title": "ASPCA Animal Poison Control Center — plants toxic and non-toxic to dogs",
+    "short": "ASPCA plant list for dogs",
+    "url": "https://www.aspca.org/pet-care/animal-poison-control/dogs-plant-list",
+    "covers": "toxicity"
+  }
+}

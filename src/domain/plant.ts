@@ -109,7 +109,10 @@ export enum WaterFrequency {
 export interface WaterSchedule {
   frequency: WaterFrequency;
   notes?: string;
-  seasonalModifier?: string;
+  /** Spring and summer, while most plants grow. */
+  growingSeason?: string;
+  /** Autumn and winter, while most plants rest. */
+  restingSeason?: string;
 }
 
 export enum SoilType {
@@ -125,7 +128,6 @@ export enum SoilType {
 export interface SoilPreference {
   type: SoilType;
   notes?: string;
-  drainage?: string;
 }
 
 export interface TemperatureRange {
@@ -154,11 +156,36 @@ export interface Toxicity {
   notes?: string;
 }
 
+export type CareDifficulty = "easy" | "moderate" | "demanding";
+
+/** Where it's grown: as a houseplant, in the garden, or either. */
+export type CarePlacement = "indoor" | "outdoor" | "both";
+
+/** Something that goes wrong, why, and what to do — the way people look it up. */
+export interface CareProblem {
+  symptom: string;
+  cause: string;
+  fix: string;
+}
+
+/** A published reference a record was checked against, and what it covers. */
+export interface CareSource {
+  id: string;
+  title: string;
+  short: string;
+  url: string;
+  covers: string;
+}
+
 export interface CareGuide {
   id: string;
   scientificName: string;
   commonNames: string[];
-  taxonomy?: string;
+  family: string;
+  genus: string;
+
+  difficulty: CareDifficulty;
+  placement: CarePlacement;
 
   // Care details
   light: LightRange;
@@ -171,17 +198,17 @@ export interface CareGuide {
   // Additional info
   feeding?: string;
   repotting?: string;
+  pruning?: string;
   propagation?: string;
-  commonProblems?: string[];
+  problems: CareProblem[];
   growthHabit?: string;
   matureSize?: string;
-  hardinessZone?: string;
 
   // Metadata
-  sourceRefs?: string[];
+  sources: CareSource[];
   reviewedBy?: string;
   lastReviewedAt?: Date;
-  confidence?: "species" | "genus";
+  confidence: "species" | "genus";
 }
 
 // MARK: - Saved Plant (User's Collection)

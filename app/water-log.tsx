@@ -186,6 +186,12 @@ export default function WaterLogScreen() {
 
   const rhythm = summariseWatering(logs);
   const season = currentSeason(hemisphere);
+  // The care library's advice for the half of the year it is where they live.
+  const seasonalAdvice = care
+    ? season === "spring" || season === "summer"
+      ? care.guide.water.growingSeason
+      : care.guide.water.restingSeason
+    : undefined;
 
   // Reminders default to on; the iOS permission is asked for here, once
   // there's enough history for a reminder to mean something.
@@ -280,7 +286,7 @@ export default function WaterLogScreen() {
             icon="leaf.fill"
             tint={Tiles.green}
             title={care.matchedAt === "genus" ? "For this genus" : "For this plant"}
-            subtitle={`${care.matchedAt === "genus" ? "Usually" : "It"} ${describeWaterFrequency(care.guide.water.frequency)}.${care.guide.water.seasonalModifier ? ` ${care.guide.water.seasonalModifier}` : ""}`}
+            subtitle={`${care.matchedAt === "genus" ? "Usually" : "It"} ${describeWaterFrequency(care.guide.water.frequency)}.${seasonalAdvice ? ` Right now: ${seasonalAdvice}` : ""}`}
           />
         ) : null}
         {rhythm ? <ListRow icon="clock.fill" tint={Tiles.blue} title="Your rhythm" subtitle={describeRhythm(rhythm)} /> : null}

@@ -19,6 +19,7 @@ import { getCapture, toIdentificationImage } from "@services/capture";
 import { calibrateConfidence } from "@services/identification";
 import { lookupCareGuide } from "@services/careDatabase";
 import { getUserPreferences } from "@services/userPreferences";
+import type { Hemisphere } from "@services/wateringInsights";
 import { createPlant, addPhoto } from "@services/database";
 import { ErrorCode } from "@services/apiClient";
 import { ConfidenceBand, Species, getToxicityText } from "@domain/plant";
@@ -45,6 +46,7 @@ export default function ResultScreen() {
 
   const [warnAboutToxicity, setWarnAboutToxicity] = useState(true);
   const [units, setUnits] = useState<"metric" | "imperial">("metric");
+  const [hemisphere, setHemisphere] = useState<Hemisphere>("north");
 
   // Identify once. The guard matters because the effect re-runs on every
   // state change the identify call itself causes.
@@ -62,6 +64,7 @@ export default function ResultScreen() {
       .then((prefs) => {
         setWarnAboutToxicity(prefs.showToxicityWarnings);
         setUnits(prefs.units);
+        setHemisphere(prefs.hemisphere);
       })
       .catch(() => {
         // Default to warning. Failing closed on a safety message is the only
@@ -271,21 +274,14 @@ export default function ResultScreen() {
 
             <Text style={styles.sectionTitle}>How to care for it</Text>
             {care ? (
-              <>
-                {care.matchedAt === "genus" || care.unreviewed ? (
-                  <Text style={styles.caveat}>
-                    {[
-                      care.matchedAt === "genus"
-                        ? `These notes cover the ${care.guide.scientificName.split(" ")[0]} genus in general, not this exact species.`
-                        : null,
-                      care.unreviewed ? "Not yet reviewed by a horticulturist." : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  </Text>
-                ) : null}
-                <CareCard guide={care.guide} units={units} />
-              </>
+              // The toxicity warning itself is already near the top of this
+              // screen, so the care card only carries the summary.
+              <CareCard
+                care={care}
+                units={units}
+                hemisphere={hemisphere}
+                toxicity={warnAboutToxicity ? "summary" : "hidden"}
+              />
             ) : (
               <View style={styles.noCare}>
                 <IconTile icon="book.closed.fill" color={Tiles.grey} size={36} />

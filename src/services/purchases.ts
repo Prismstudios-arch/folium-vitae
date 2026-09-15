@@ -20,6 +20,7 @@ import { cancelTrialReminder } from "./trialReminder";
 import {
   TrialUnit,
   describePeriod,
+  describePlanName,
   describeTrialDuration,
   normaliseTrialUnit,
 } from "./subscriptionTerms";
@@ -163,6 +164,8 @@ export interface Plan {
   description: string;
   /** Localised and formatted by the store. Display this, never a computed one. */
   priceString: string;
+  /** The store's own monthly figure for a yearly plan, as a secondary line. Null otherwise. */
+  pricePerMonth: string | null;
   /** "month", "3 months" and so on; empty if the store's period is unrecognised. */
   period: string;
   /** Present only when this Apple ID can actually get the trial. */
@@ -281,9 +284,10 @@ export async function loadPlans(): Promise<PlanLoad> {
       return {
         id: product.identifier,
         packageId: pkg.identifier,
-        title: product.title,
+        title: describePlanName(product.subscriptionPeriod) ?? product.title,
         description: product.description,
         priceString: product.priceString,
+        pricePerMonth: product.subscriptionPeriod === "P1Y" ? product.pricePerMonthString : null,
         period: describePeriod(product.subscriptionPeriod),
         trial:
           offersFreeTrial && unit !== null && eligibility[product.identifier]
