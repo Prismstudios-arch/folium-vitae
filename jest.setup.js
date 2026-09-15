@@ -59,15 +59,35 @@ jest.mock("react-native-safe-area-context", () => ({
   }),
 }));
 
-jest.mock("react-native-reanimated", () => ({
-  ...jest.requireActual("react-native-reanimated"),
-  FadeInDown: { animate: jest.fn() },
-  FadeOutUp: { animate: jest.fn() },
-  useAnimatedStyle: jest.fn(() => ({})),
-  Animated: {
-    View: ({ children }) => children,
-  },
-}));
+// A hand-written Reanimated mock covering what the app uses. Under
+// Reanimated 4, both requireActual and the package's own mock load
+// react-native-worklets, which can't initialise in Jest — so neither can be
+// used once a tested component (the button's press spring) imports it.
+jest.mock("react-native-reanimated", () => {
+  const { View } = require("react-native");
+  const identity = (value) => value;
+  const layoutAnimation = () => {
+    const builder = { duration: () => builder, delay: () => builder, springify: () => builder };
+    return builder;
+  };
+
+  return {
+    __esModule: true,
+    default: { View, createAnimatedComponent: (Component) => Component },
+    useSharedValue: (value) => ({ value }),
+    useAnimatedStyle: (factory) => factory(),
+    withSpring: identity,
+    withTiming: identity,
+    withRepeat: identity,
+    cancelAnimation: () => undefined,
+    Easing: { inOut: identity, quad: identity },
+    FadeIn: layoutAnimation(),
+    FadeInDown: layoutAnimation(),
+  };
+});
+
+// SF Symbols are a native iOS view; tests only need the component to exist.
+jest.mock("expo-symbols", () => ({ SymbolView: () => null }));
 
 // prop-types is no longer a dependency: React 19 removed it, so there is
 // nothing left to mock and doing so fails module resolution.

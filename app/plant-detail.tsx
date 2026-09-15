@@ -1,21 +1,14 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  Alert,
-  Image,
-} from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator, Alert, Image } from "react-native";
 import { useCallback, useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, Spacing, Typography } from "@constants/theme";
+import { Colors, Radius, Shadow, Spacing, Tiles, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
 import { CareCard } from "@components/CareCard";
+import { ConfidenceMeter } from "@components/ConfidenceMeter";
 import { Icon } from "@components/Icon";
+import { IconTile } from "@components/ListGroup";
 import { ScreenHeader } from "@components/ScreenHeader";
 import { usePlant } from "@hooks/usePlants";
 import { useGoBack } from "@hooks/useGoBack";
@@ -39,9 +32,8 @@ export default function PlantDetailScreen() {
   const [editData, setEditData] = useState<Partial<SavedPlant>>({});
   const [saving, setSaving] = useState(false);
 
-  // Coming back from the watering log or the journal must show what was
-  // just added. The plant was loaded once on mount, so its history here
-  // stayed stale until the screen was closed and reopened.
+  // Coming back from the watering log or the journal must show what was just
+  // added, so refresh (quietly) every time the screen is focused.
   useFocusEffect(
     useCallback(() => {
       void reload({ silent: true });
@@ -51,9 +43,7 @@ export default function PlantDetailScreen() {
   useEffect(() => {
     getUserPreferences()
       .then((prefs) => setUnits(prefs.units))
-      .catch(() => {
-        // Metric default stands.
-      });
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -66,7 +56,7 @@ export default function PlantDetailScreen() {
     });
 
     // The lookup result, not just the guide, so the genus-level and
-    // unreviewed caveats the result screen shows are shown here too.
+    // unreviewed caveats are shown here too.
     setCare(lookupCareGuide(plant.scientificName));
   }, [plant]);
 
@@ -76,8 +66,7 @@ export default function PlantDetailScreen() {
     setSaving(true);
     try {
       await updatePlant(plant.id, {
-        // Empty strings mean "cleared" — store undefined so the field
-        // genuinely empties rather than saving a blank string.
+        // Empty strings mean "cleared" — store undefined so the field empties.
         nickname: editData.nickname?.trim() || undefined,
         location: editData.location?.trim() || undefined,
         notes: editData.notes?.trim() || undefined,
@@ -87,7 +76,7 @@ export default function PlantDetailScreen() {
       setIsEditing(false);
     } catch (err) {
       console.error("Failed to save plant:", err);
-      // Stay in edit mode so the user's typing is not thrown away.
+      // Stay in edit mode so the typing isn't thrown away.
       Alert.alert("Couldn't save", "Your changes are still here. Try again.");
     } finally {
       setSaving(false);
@@ -110,14 +99,11 @@ export default function PlantDetailScreen() {
               await deletePlant(plant.id);
             } catch (err) {
               console.error("Failed to delete plant:", err);
-              // Do not navigate away — leaving the screen would imply it
-              // worked, and the plant would still be in the list.
+              // Don't navigate away — that would imply it worked.
               Alert.alert("Couldn't delete", `${getDisplayName(plant)} is still in your collection.`);
               return;
             }
 
-            // A reminder about a plant that no longer exists would open a
-            // "not found" screen.
             await cancelWateringReminder(plant.id).catch(() => undefined);
             goBack();
           },
@@ -129,7 +115,7 @@ export default function PlantDetailScreen() {
   if (loading) {
     return (
       <View style={[styles.container, styles.centred]}>
-        <ActivityIndicator size="large" color={Colors.leaf} />
+        <ActivityIndicator size="large" color={Colors.brand} />
       </View>
     );
   }
@@ -139,213 +125,213 @@ export default function PlantDetailScreen() {
       <View style={styles.container}>
         <ScreenHeader onBack={goBack} backLabel="My Plants" />
         <View style={styles.centred}>
-          <Text style={styles.stateTitle}>
-            {error ? "This plant couldn't be loaded" : "This plant isn't in your collection"}
-          </Text>
-          <Button label="Back to My Plants" onPress={goBack} style={styles.stateButton} />
+          <View style={styles.stateCard}>
+            <IconTile icon="leaf.fill" color={Tiles.grey} size={52} />
+            <Text style={styles.stateTitle}>
+              {error ? "This plant couldn't be loaded" : "This plant isn't in your collection"}
+            </Text>
+            <Button label="Back to My Plants" onPress={goBack} style={styles.stateButton} />
+          </View>
         </View>
       </View>
     );
   }
 
   const cover = getMostRecentPhoto(plant);
-  const genus = care?.guide.scientificName.split(" ")[0];
+  const lastWatered = plant.waterLogs[0];
   const openWithPlant = (pathname: "/water-log" | "/photo-journal" | "/disease-detection") =>
     router.push({ pathname, params: { plantId: plant.id, plantName: getDisplayName(plant) } });
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <ScreenHeader
         onBack={goBack}
         backLabel="My Plants"
         right={
-          <TouchableOpacity
-            onPress={() => setIsEditing(!isEditing)}
-            style={styles.editToggle}
-            accessibilityRole="button"
-          >
+          <Pressable onPress={() => setIsEditing(!isEditing)} style={styles.editToggle} accessibilityRole="button">
             <Text style={styles.editToggleText}>{isEditing ? "Cancel" : "Edit"}</Text>
-          </TouchableOpacity>
+          </Pressable>
         }
       />
 
-      {/* DESIGN.md: the photo is the hero. The plant's own photo leads. */}
-      {cover && !isEditing ? (
-        <Image source={{ uri: cover.imagePath }} style={styles.cover} resizeMode="cover" />
-      ) : null}
-
-      <View style={styles.content}>
-        {isEditing ? (
-          <View style={styles.editor}>
-            <Text style={styles.fieldLabel}>Nickname</Text>
-            <TextInput
-              style={styles.field}
-              placeholder={plant.commonNames[0] ?? plant.scientificName}
-              value={editData.nickname || ""}
-              onChangeText={(text) => setEditData({ ...editData, nickname: text })}
-              placeholderTextColor={Colors.textDisabled}
-            />
-
-            <Text style={styles.fieldLabel}>Where it lives</Text>
-            <TextInput
-              style={styles.field}
-              placeholder="e.g. Living room windowsill"
-              value={editData.location || ""}
-              onChangeText={(text) => setEditData({ ...editData, location: text })}
-              placeholderTextColor={Colors.textDisabled}
-            />
-
-            <Text style={styles.fieldLabel}>Notes</Text>
-            <TextInput
-              style={[styles.field, styles.fieldMultiline]}
-              placeholder="Anything worth remembering"
-              value={editData.notes || ""}
-              onChangeText={(text) => setEditData({ ...editData, notes: text })}
-              placeholderTextColor={Colors.textDisabled}
-              multiline
-            />
-
-            <Button
-              label="Save changes"
-              onPress={handleSave}
-              loading={saving}
-              disabled={saving}
-              style={styles.saveButton}
-            />
+      {isEditing ? (
+        <View style={styles.editor}>
+          <Field label="Nickname" value={editData.nickname || ""} placeholder={plant.commonNames[0] ?? plant.scientificName} onChange={(nickname) => setEditData({ ...editData, nickname })} />
+          <Field label="Where it lives" value={editData.location || ""} placeholder="e.g. Living room windowsill" onChange={(location) => setEditData({ ...editData, location })} />
+          <Field label="Notes" value={editData.notes || ""} placeholder="Anything worth remembering" onChange={(notes) => setEditData({ ...editData, notes })} multiline />
+          <Button label="Save changes" onPress={handleSave} loading={saving} disabled={saving} style={styles.editorButton} />
+        </View>
+      ) : (
+        <>
+          {/* DESIGN.md: the plant's own photo leads. */}
+          <View style={styles.hero}>
+            {cover ? (
+              <Image source={{ uri: cover.imagePath }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            ) : (
+              <LinearGradient colors={[Colors.brandLit, Colors.brandDeep]} style={StyleSheet.absoluteFill} />
+            )}
+            <LinearGradient colors={["transparent", "rgba(0, 0, 0, 0.7)"]} style={styles.heroFade} pointerEvents="none" />
+            <View style={styles.heroText}>
+              <Text style={styles.heroName}>{getDisplayName(plant)}</Text>
+              <Text style={styles.heroScientific}>{plant.scientificName}</Text>
+            </View>
           </View>
-        ) : (
-          // Ternaries, not &&: an empty string from the database would render
-          // as a bare text node and crash React Native.
-          <View>
-            <Text style={styles.name}>{getDisplayName(plant)}</Text>
-            <Text style={styles.scientificName}>{plant.scientificName}</Text>
 
-            <View style={styles.facts}>
+          <View style={styles.content}>
+            <View style={styles.chips}>
               {plant.location ? <Fact icon="mappin.and.ellipse" text={plant.location} /> : null}
               <Fact
-                icon="camera.viewfinder"
-                text={`Identified ${new Date(plant.identificationDate).toLocaleDateString(undefined, {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}`}
+                icon="calendar"
+                text={`Added ${new Date(plant.identificationDate).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`}
               />
             </View>
 
-            {plant.notes ? <Text style={styles.notes}>{plant.notes}</Text> : null}
-          </View>
-        )}
+            {/* Everything you can do with this plant, one tap away. */}
+            <View style={styles.actions}>
+              <ActionTile
+                icon="drop.fill"
+                color={Tiles.blue}
+                title="Water"
+                detail={
+                  lastWatered
+                    ? new Date(lastWatered.date).toLocaleDateString(undefined, { day: "numeric", month: "short" })
+                    : "Not logged"
+                }
+                onPress={() => openWithPlant("/water-log")}
+              />
+              <ActionTile
+                icon="photo.stack"
+                color={Tiles.purple}
+                title="Journal"
+                detail={plant.photos.length === 0 ? "No photos" : `${plant.photos.length} photo${plant.photos.length === 1 ? "" : "s"}`}
+                onPress={() => openWithPlant("/photo-journal")}
+              />
+              <ActionTile
+                icon="stethoscope"
+                color={Tiles.teal}
+                title="Health"
+                detail="Check a leaf"
+                onPress={() => openWithPlant("/disease-detection")}
+              />
+            </View>
 
-        {/* Everything you can do with this plant, as rows rather than three
-            stacked grey buttons. */}
-        <View style={styles.actions}>
-          <ActionRow
-            icon="drop.fill"
-            title="Watering log"
-            detail={
-              plant.waterLogs.length === 0
-                ? "Nothing logged yet"
-                : `Last watered ${new Date(plant.waterLogs[0].date).toLocaleDateString(undefined, {
-                    day: "numeric",
-                    month: "short",
-                  })}`
-            }
-            onPress={() => openWithPlant("/water-log")}
-          />
-          <ActionRow
-            icon="photo.stack"
-            title="Photo journal"
-            detail={
-              plant.photos.length === 0
-                ? "No photos yet"
-                : `${plant.photos.length} photo${plant.photos.length === 1 ? "" : "s"}`
-            }
-            onPress={() => openWithPlant("/photo-journal")}
-          />
-          <ActionRow
-            icon="stethoscope"
-            title="Check plant health"
-            detail="Photograph a leaf that looks wrong"
-            onPress={() => openWithPlant("/disease-detection")}
-            last
-          />
-        </View>
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>When it was identified</Text>
+              <ConfidenceMeter band={plant.confidenceBand} score={plant.rawScore} />
+            </View>
 
-        <Text style={styles.sectionTitle}>Care</Text>
-        {care ? (
-          <>
-            {care.matchedAt === "genus" ? (
-              <Text style={styles.caveat}>
-                These notes cover the {genus} genus in general, not this exact species.
-              </Text>
+            {plant.notes ? (
+              <View style={styles.card}>
+                <Text style={styles.cardLabel}>Notes</Text>
+                <Text style={styles.notes}>{plant.notes}</Text>
+              </View>
             ) : null}
-            {care.unreviewed ? (
-              <Text style={styles.caveat}>Not yet reviewed by a horticulturist.</Text>
-            ) : null}
-            <CareCard guide={care.guide} compactMode={true} units={units} />
-          </>
-        ) : (
-          <View style={styles.noCare}>
-            <Text style={styles.noCareTitle}>No care notes for this plant yet</Text>
-            <Text style={styles.noCareBody}>
-              We'd rather show nothing than guess. More plants are being added.
-            </Text>
-          </View>
-        )}
 
-        <TouchableOpacity onPress={handleDelete} style={styles.delete} accessibilityRole="button">
-          <Icon name="trash" size={16} color={Colors.error} />
-          <Text style={styles.deleteText}>Delete this plant</Text>
-        </TouchableOpacity>
-      </View>
+            <Text style={styles.sectionTitle}>Care</Text>
+            {care ? (
+              <>
+                {care.matchedAt === "genus" || care.unreviewed ? (
+                  <Text style={styles.caveat}>
+                    {[
+                      care.matchedAt === "genus"
+                        ? `These notes cover the ${care.guide.scientificName.split(" ")[0]} genus in general, not this exact species.`
+                        : null,
+                      care.unreviewed ? "Not yet reviewed by a horticulturist." : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  </Text>
+                ) : null}
+                <CareCard guide={care.guide} units={units} />
+              </>
+            ) : (
+              <View style={styles.noCare}>
+                <IconTile icon="book.closed.fill" color={Tiles.grey} size={36} />
+                <View style={styles.noCareText}>
+                  <Text style={styles.noCareTitle}>No care notes for this plant yet</Text>
+                  <Text style={styles.noCareBody}>We'd rather show nothing than guess. More plants are being added.</Text>
+                </View>
+              </View>
+            )}
+
+            <Button label="Delete this plant" icon="trash" variant="destructive" onPress={handleDelete} style={styles.delete} />
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }
 
 function Fact({ icon, text }: { icon: SFSymbol; text: string }) {
   return (
-    <View style={styles.fact}>
-      <Icon name={icon} size={15} color={Colors.textSecondary} />
-      <Text style={styles.factText}>{text}</Text>
+    <View style={styles.chip}>
+      <Icon name={icon} size={13} color={Colors.textSecondary} weight="semibold" />
+      <Text style={styles.chipText}>{text}</Text>
     </View>
   );
 }
 
-function ActionRow({
+function ActionTile({
   icon,
+  color,
   title,
   detail,
   onPress,
-  last = false,
 }: {
   icon: SFSymbol;
+  color: string;
   title: string;
   detail: string;
   onPress: () => void;
-  last?: boolean;
 }) {
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
-      style={[styles.actionRow, last && styles.actionRowLast]}
+      style={({ pressed }) => [styles.action, pressed && styles.pressed]}
       accessibilityRole="button"
+      accessibilityLabel={`${title}. ${detail}`}
     >
-      <View style={styles.actionIcon}>
-        <Icon name={icon} size={18} />
-      </View>
-      <View style={styles.actionText}>
-        <Text style={styles.actionTitle}>{title}</Text>
-        <Text style={styles.actionDetail}>{detail}</Text>
-      </View>
-      <Icon name="chevron.right" size={14} color={Colors.textDisabled} weight="semibold" />
-    </TouchableOpacity>
+      <IconTile icon={icon} color={color} size={36} />
+      <Text style={styles.actionTitle}>{title}</Text>
+      <Text style={styles.actionDetail} numberOfLines={1}>
+        {detail}
+      </Text>
+    </Pressable>
+  );
+}
+
+function Field({
+  label,
+  value,
+  placeholder,
+  onChange,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+  multiline?: boolean;
+}) {
+  return (
+    <View>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        style={[styles.field, multiline && styles.fieldMultiline]}
+        placeholder={placeholder}
+        value={value}
+        onChangeText={onChange}
+        placeholderTextColor={Colors.textDisabled}
+        multiline={multiline}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.bg,
   },
   scrollContent: {
     paddingBottom: Spacing.extra,
@@ -353,17 +339,24 @@ const styles = StyleSheet.create({
   centred: {
     flex: 1,
     justifyContent: "center",
+    padding: Spacing.default,
+  },
+  stateCard: {
     alignItems: "center",
-    paddingHorizontal: Spacing.loose,
+    padding: Spacing.loose,
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.card,
+    gap: Spacing.tight,
   },
   stateTitle: {
     ...Typography.headline,
     color: Colors.textPrimary,
     textAlign: "center",
+    marginTop: Spacing.tight,
   },
   stateButton: {
     alignSelf: "stretch",
-    marginTop: Spacing.loose,
+    marginTop: Spacing.default,
   },
   editToggle: {
     minHeight: 44,
@@ -373,153 +366,162 @@ const styles = StyleSheet.create({
   },
   editToggleText: {
     ...Typography.bodyLarge,
-    color: Colors.leaf,
+    color: Colors.brand,
     fontWeight: "600",
   },
-  cover: {
-    width: "100%",
-    height: 300,
-    backgroundColor: Colors.glass,
+  hero: {
+    marginHorizontal: Spacing.default,
+    height: 340,
+    borderRadius: Radius.xl,
+    overflow: "hidden",
+    justifyContent: "flex-end",
+    backgroundColor: Colors.separator,
+    ...Shadow.card,
+  },
+  heroFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "60%",
+  },
+  heroText: {
+    padding: Spacing.loose,
+  },
+  heroName: {
+    ...Typography.displayLarge,
+    color: "#FFFFFF",
+  },
+  heroScientific: {
+    ...Typography.bodyLarge,
+    fontStyle: "italic",
+    color: "rgba(255, 255, 255, 0.85)",
+    marginTop: 2,
   },
   content: {
     paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.loose,
   },
-  name: {
-    ...Typography.displayLarge,
-    letterSpacing: 0,
-    color: Colors.textPrimary,
-  },
-  scientificName: {
-    ...Typography.bodyLarge,
-    color: Colors.textSecondary,
-    fontStyle: "italic",
-    marginTop: Spacing.compact,
-  },
-  facts: {
-    marginTop: Spacing.default,
+  chips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: Spacing.tight,
+    marginTop: Spacing.default,
   },
-  fact: {
+  chip: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 6,
+    paddingHorizontal: Spacing.default - 4,
+    paddingVertical: 7,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.card,
+  },
+  chipText: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+  },
+  actions: {
+    flexDirection: "row",
+    gap: Spacing.tight + 2,
+    marginTop: Spacing.default,
+  },
+  action: {
+    flex: 1,
+    padding: Spacing.default - 4,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+    gap: 4,
+  },
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
+  },
+  actionTitle: {
+    ...Typography.subheadline,
+    color: Colors.textPrimary,
+    marginTop: Spacing.tight,
+  },
+  actionDetail: {
+    ...Typography.caption2,
+    color: Colors.textSecondary,
+  },
+  card: {
+    marginTop: Spacing.default,
+    padding: Spacing.default,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
     gap: Spacing.tight,
   },
-  factText: {
-    ...Typography.caption1,
+  cardLabel: {
+    ...Typography.overline,
     color: Colors.textSecondary,
   },
   notes: {
     ...Typography.body,
     lineHeight: 22,
     color: Colors.textPrimary,
-    marginTop: Spacing.default,
-  },
-  editor: {
-    gap: Spacing.tight,
-  },
-  fieldLabel: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: Spacing.tight,
-  },
-  field: {
-    ...Typography.bodyLarge,
-    color: Colors.textPrimary,
-    minHeight: 48,
-    paddingHorizontal: Spacing.default,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.glass,
-    backgroundColor: Colors.surface,
-  },
-  fieldMultiline: {
-    minHeight: 110,
-    paddingTop: Spacing.default,
-    textAlignVertical: "top",
-  },
-  saveButton: {
-    marginTop: Spacing.default,
-  },
-  actions: {
-    marginTop: Spacing.loose,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.glass,
-    backgroundColor: Colors.surface,
-  },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.default,
-    minHeight: 64,
-    paddingHorizontal: Spacing.default,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.glass,
-  },
-  actionRowLast: {
-    borderBottomWidth: 0,
-  },
-  actionIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "rgba(45, 88, 66, 0.08)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionText: {
-    flex: 1,
-  },
-  actionTitle: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  actionDetail: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: 2,
   },
   sectionTitle: {
     ...Typography.headline,
     color: Colors.textPrimary,
     marginTop: Spacing.spacious,
-    marginBottom: Spacing.default,
+    marginBottom: Spacing.default - 4,
   },
   caveat: {
     ...Typography.caption1,
     color: Colors.textSecondary,
-    marginBottom: Spacing.tight,
+    marginTop: -4,
+    marginBottom: Spacing.default - 4,
   },
   noCare: {
-    padding: Spacing.loose,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: Colors.glass,
+    flexDirection: "row",
     alignItems: "center",
+    gap: Spacing.default - 4,
+    padding: Spacing.default,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+  },
+  noCareText: {
+    flex: 1,
   },
   noCareTitle: {
     ...Typography.subheadline,
     color: Colors.textPrimary,
-    textAlign: "center",
   },
   noCareBody: {
     ...Typography.caption1,
     color: Colors.textSecondary,
-    marginTop: Spacing.tight,
-    textAlign: "center",
+    marginTop: 2,
   },
   delete: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.tight,
-    minHeight: 48,
     marginTop: Spacing.spacious,
   },
-  deleteText: {
+  editor: {
+    marginHorizontal: Spacing.default,
+    padding: Spacing.default,
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.card,
+    gap: Spacing.default - 4,
+  },
+  fieldLabel: {
+    ...Typography.overline,
+    color: Colors.textSecondary,
+    marginBottom: 6,
+  },
+  field: {
     ...Typography.bodyLarge,
-    color: Colors.error,
+    color: Colors.textPrimary,
+    minHeight: 50,
+    paddingHorizontal: Spacing.default,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bg,
+  },
+  fieldMultiline: {
+    minHeight: 110,
+    paddingTop: Spacing.default - 2,
+    textAlignVertical: "top",
+  },
+  editorButton: {
+    marginTop: Spacing.tight,
   },
 });

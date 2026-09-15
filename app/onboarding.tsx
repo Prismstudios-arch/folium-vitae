@@ -1,34 +1,23 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  Alert,
-} from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, Alert } from "react-native";
 import { useState } from "react";
 import { useRouter } from "expo-router";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { StatusBar } from "expo-status-bar";
+import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, Spacing, Typography } from "@constants/theme";
+import { Colors, Radius, Shadow, Spacing, Tiles, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
 import { Icon } from "@components/Icon";
+import { IconTile } from "@components/ListGroup";
 import { completeOnboarding, saveUserPreferences } from "@services/userPreferences";
 
 /**
- * First run.
+ * First run: a brand welcome, the promises, and one safety question.
  *
- * The previous version pinned each page to the full window height and
- * switched scrolling off. Once every screen was padded clear of the notch,
- * the page was taller than the space it had, its button sat below the bottom
- * edge, and nobody could get past the welcome screen. The button now lives
- * in a footer that is always on screen, and the content above it scrolls if
- * it ever needs to — at large text sizes, or on a small phone.
- *
- * It also dropped a "How did you find us?" step. The answer was saved on the
- * phone and never sent anywhere, beside a note claiming "we use this to
- * improve our marketing".
+ * The button always sits in a footer that's on screen — an earlier version
+ * pinned each page to the window height with scrolling off, so the button
+ * ended up below the bottom edge and nobody could get past the first page.
  */
 
 type Step = "welcome" | "promise" | "household";
@@ -36,13 +25,15 @@ const STEPS: Step[] = ["welcome", "promise", "household"];
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [stepIndex, setStepIndex] = useState(0);
-  // Null until answered: this one drives safety warnings, so it isn't
-  // pre-selected for them.
+  // Null until answered: this drives safety warnings, so it isn't
+  // pre-selected for anyone.
   const [hasChildrenOrPets, setHasChildrenOrPets] = useState<boolean | null>(null);
   const [finishing, setFinishing] = useState(false);
 
   const step = STEPS[stepIndex];
+  const isWelcome = step === "welcome";
   const isLast = stepIndex === STEPS.length - 1;
 
   const handleComplete = async () => {
@@ -74,19 +65,34 @@ export default function OnboardingScreen() {
     }
   };
 
-  const handlePrimary = () => {
-    if (isLast) {
-      void handleComplete();
-    } else {
-      setStepIndex(stepIndex + 1);
-    }
-  };
+  const next = () => (isLast ? void handleComplete() : setStepIndex(stepIndex + 1));
 
   return (
-    <View style={styles.container}>
-      {/* Progress is real information here: three steps, in order. */}
+    <View style={[styles.container, !isWelcome && styles.containerLight]}>
+      <StatusBar style={isWelcome ? "light" : "dark"} />
+
+      {isWelcome ? (
+        <Animated.View entering={FadeIn.duration(400)} style={StyleSheet.absoluteFill}>
+          <LinearGradient
+            colors={[Colors.brandLit, Colors.brandDeep]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.9, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <Image
+            source={require("../assets/illustrations/hero-sprig.png")}
+            // Below the feature list and clear of the button, so no leaf
+            // ever sits behind text.
+            style={[styles.welcomeArt, { bottom: insets.bottom + 140, right: -70, width: 260, height: 234 }]}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+        </Animated.View>
+      ) : null}
+
+      {/* Three steps, in order: progress is real information here. */}
       <View
-        style={styles.progress}
+        style={[styles.progress, { paddingTop: insets.top + Spacing.default }]}
         accessibilityRole="progressbar"
         accessibilityLabel={`Step ${stepIndex + 1} of ${STEPS.length}`}
       >
@@ -94,9 +100,9 @@ export default function OnboardingScreen() {
           <View
             key={s}
             style={[
-              styles.progressDot,
-              index <= stepIndex && styles.progressDotReached,
-              index === stepIndex && styles.progressDotCurrent,
+              styles.dot,
+              isWelcome ? styles.dotOnDark : styles.dotOnLight,
+              index === stepIndex && (isWelcome ? styles.dotCurrentOnDark : styles.dotCurrent),
             ]}
           />
         ))}
@@ -104,36 +110,38 @@ export default function OnboardingScreen() {
 
       <ScrollView
         style={styles.body}
-        contentContainerStyle={styles.bodyContent}
+        contentContainerStyle={[styles.bodyContent, isWelcome && styles.bodyContentWelcome]}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View key={step} entering={FadeInDown.duration(320)}>
+        <Animated.View key={step} entering={FadeInDown.duration(380)}>
           {step === "welcome" && <Welcome />}
-          {step === "promise" && <Promise />}
+          {step === "promise" && <Promises />}
           {step === "household" && (
             <Household value={hasChildrenOrPets} onChange={setHasChildrenOrPets} />
           )}
         </Animated.View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing.tight }]}>
         <Button
-          label={isLast ? "Scan your first plant" : "Continue"}
-          onPress={handlePrimary}
+          label={isWelcome ? "Get started" : isLast ? "Start identifying" : "Continue"}
+          variant={isWelcome ? "inverse" : "primary"}
+          icon={isLast ? "camera.fill" : undefined}
+          onPress={next}
           loading={finishing}
           disabled={isLast && hasChildrenOrPets === null}
         />
 
         {stepIndex > 0 ? (
-          <TouchableOpacity
+          <Pressable
             onPress={() => setStepIndex(stepIndex - 1)}
-            style={styles.secondaryAction}
+            style={styles.back}
             accessibilityRole="button"
           >
-            <Text style={styles.secondaryActionText}>Back</Text>
-          </TouchableOpacity>
+            <Text style={styles.backText}>Back</Text>
+          </Pressable>
         ) : (
-          <View style={styles.secondaryAction} />
+          <Text style={styles.welcomeFine}>No account needed</Text>
         )}
       </View>
     </View>
@@ -149,54 +157,78 @@ function Welcome() {
         accessibilityIgnoresInvertColors
         accessibilityLabel="Sorrel"
       />
-      <Text style={styles.brand}>Sorrel</Text>
-      <Text style={styles.lede}>
-        Point your camera at a plant. We'll tell you what it is — and exactly how sure we are.
+      <Text style={styles.welcomeTitle}>Know every{"\n"}plant you grow.</Text>
+      <Text style={styles.welcomeBody}>
+        Point your camera at a plant. Sorrel tells you what it is — and exactly how sure it is.
       </Text>
 
-      <View style={styles.list}>
-        <Row
-          icon="camera.viewfinder"
-          title="Identify in seconds"
-          body="One clear photo is usually enough. When it isn't, we say so."
+      <View style={styles.welcomePoints}>
+        <WelcomePoint icon="camera.viewfinder" text="Identify a plant in seconds" />
+        <WelcomePoint icon="drop.fill" text="Watering log and gentle reminders" />
+        <WelcomePoint icon="photo.stack" text="A photo journal for every plant" />
+      </View>
+    </View>
+  );
+}
+
+function WelcomePoint({ icon, text }: { icon: SFSymbol; text: string }) {
+  return (
+    <View style={styles.welcomePoint}>
+      <View style={styles.welcomePointIcon}>
+        <Icon name={icon} size={16} color={Colors.brandBright} weight="semibold" />
+      </View>
+      <Text style={styles.welcomePointText}>{text}</Text>
+    </View>
+  );
+}
+
+function Promises() {
+  return (
+    <View>
+      <Text style={styles.title}>Built on three promises</Text>
+      <Text style={styles.lede}>The things plant apps usually get wrong.</Text>
+
+      <View style={styles.cards}>
+        <PromiseCard
+          icon="checkmark.seal.fill"
+          color={Tiles.green}
+          title="We say when we're not sure"
+          body="Every answer shows how confident we are, with the other possibilities alongside."
         />
-        <Row
-          icon="drop.fill"
-          title="Care notes"
-          body="Light, water and toxicity for the plants our library covers."
+        <PromiseCard
+          icon="lock.open.fill"
+          color={Tiles.blue}
+          title="No traps"
+          body="You see the price before any trial starts, and you can cancel from Settings at any time."
         />
-        <Row
-          icon="leaf.fill"
-          title="Your collection"
-          body="A watering log, reminders and a photo journal for every plant you keep."
+        <PromiseCard
+          icon="book.closed.fill"
+          color={Tiles.amber}
+          title="No made-up advice"
+          body="Care notes come from a fixed library, never generated on the fly. If nobody has reviewed a plant's notes yet, we tell you."
         />
       </View>
     </View>
   );
 }
 
-function Promise() {
+function PromiseCard({
+  icon,
+  color,
+  title,
+  body,
+}: {
+  icon: SFSymbol;
+  color: string;
+  title: string;
+  body: string;
+}) {
   return (
-    <View>
-      <Text style={styles.heading}>Three promises</Text>
-      <Text style={styles.sub}>The things plant apps usually get wrong.</Text>
-
-      <View style={styles.list}>
-        <Row
-          icon="checkmark.seal.fill"
-          title="We say when we're not sure"
-          body="Every answer shows how confident we are, with the other possibilities alongside."
-        />
-        <Row
-          icon="lock.open.fill"
-          title="No traps"
-          body="You see the price before any trial starts, and you can cancel from Settings at any time."
-        />
-        <Row
-          icon="book.closed.fill"
-          title="No made-up advice"
-          body="Care notes come from a fixed library, never generated on the fly. If nobody has reviewed a plant's notes yet, we tell you."
-        />
+    <View style={styles.card}>
+      <IconTile icon={icon} color={color} size={40} />
+      <View style={styles.cardText}>
+        <Text style={styles.cardTitle}>{title}</Text>
+        <Text style={styles.cardBody}>{body}</Text>
       </View>
     </View>
   );
@@ -211,21 +243,25 @@ function Household({
 }) {
   return (
     <View>
-      <Text style={styles.heading}>Anyone at home who might chew a leaf?</Text>
-      <Text style={styles.sub}>
+      <Text style={styles.title}>Anyone at home who might chew a leaf?</Text>
+      <Text style={styles.lede}>
         Children or pets. We'll make sure toxicity warnings are switched on.
       </Text>
 
-      <View style={styles.choices}>
+      <View style={styles.cards}>
         <Choice
           icon="pawprint.fill"
-          label="Yes, children or pets"
+          color={Tiles.orange}
+          title="Yes, children or pets"
+          detail="Warn me about toxic plants"
           selected={value === true}
           onPress={() => onChange(true)}
         />
         <Choice
           icon="house.fill"
-          label="No, just me"
+          color={Tiles.teal}
+          title="No, just me"
+          detail="Warnings stay on; you can turn them off"
           selected={value === false}
           onPress={() => onChange(false)}
         />
@@ -236,69 +272,78 @@ function Household({
   );
 }
 
-function Row({ icon, title, body }: { icon: SFSymbol; title: string; body: string }) {
-  return (
-    <View style={styles.row}>
-      <View style={styles.rowIcon}>
-        <Icon name={icon} size={22} />
-      </View>
-      <View style={styles.rowText}>
-        <Text style={styles.rowTitle}>{title}</Text>
-        <Text style={styles.rowBody}>{body}</Text>
-      </View>
-    </View>
-  );
-}
-
 function Choice({
   icon,
-  label,
+  color,
+  title,
+  detail,
   selected,
   onPress,
 }: {
   icon: SFSymbol;
-  label: string;
+  color: string;
+  title: string;
+  detail: string;
   selected: boolean;
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
-      style={[styles.choice, selected && styles.choiceSelected]}
+      style={({ pressed }) => [styles.card, selected && styles.cardSelected, pressed && styles.cardPressed]}
       accessibilityRole="radio"
       accessibilityState={{ checked: selected }}
     >
-      <Icon name={icon} size={22} color={selected ? "#FFFFFF" : Colors.leaf} />
-      <Text style={[styles.choiceLabel, selected && styles.choiceLabelSelected]}>{label}</Text>
-      {selected ? <Icon name="checkmark" size={18} color="#FFFFFF" weight="bold" /> : null}
-    </TouchableOpacity>
+      <IconTile icon={icon} color={color} size={40} />
+      <View style={styles.cardText}>
+        <Text style={styles.cardTitle}>{title}</Text>
+        <Text style={styles.cardBody}>{detail}</Text>
+      </View>
+      <View style={[styles.radio, selected && styles.radioSelected]}>
+        {selected ? <Icon name="checkmark" size={13} color="#FFFFFF" weight="bold" /> : null}
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.brandDeep,
+  },
+  containerLight: {
+    backgroundColor: Colors.bg,
+  },
+  welcomeArt: {
+    position: "absolute",
+    right: -70,
+    width: 360,
+    height: 324,
   },
   progress: {
     flexDirection: "row",
     justifyContent: "center",
     gap: 6,
-    paddingTop: Spacing.default,
     paddingBottom: Spacing.tight,
   },
-  progressDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.glass,
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
-  progressDotReached: {
-    backgroundColor: Colors.leafLight,
+  dotOnDark: {
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
   },
-  progressDotCurrent: {
-    width: 22,
-    backgroundColor: Colors.leaf,
+  dotOnLight: {
+    backgroundColor: Colors.separator,
+  },
+  dotCurrent: {
+    width: 24,
+    backgroundColor: Colors.brand,
+  },
+  dotCurrentOnDark: {
+    width: 24,
+    backgroundColor: "#FFFFFF",
   },
   body: {
     flex: 1,
@@ -309,14 +354,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.loose,
     paddingVertical: Spacing.loose,
   },
+  bodyContentWelcome: {
+    justifyContent: "flex-start",
+    paddingTop: Spacing.spacious,
+  },
   mark: {
-    width: 88,
-    height: 88,
+    width: 72,
+    height: 72,
     marginBottom: Spacing.loose,
   },
-  brand: {
+  welcomeTitle: {
+    fontSize: 40,
+    lineHeight: 46,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
+  },
+  welcomeBody: {
+    ...Typography.bodyLarge,
+    lineHeight: 25,
+    color: "rgba(255, 255, 255, 0.82)",
+    marginTop: Spacing.default,
+    maxWidth: 330,
+  },
+  welcomePoints: {
+    marginTop: Spacing.spacious,
+    gap: Spacing.default,
+  },
+  welcomePoint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.default - 4,
+  },
+  welcomePointIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  welcomePointText: {
+    ...Typography.bodyLarge,
+    color: "#FFFFFF",
+    fontWeight: "500",
+  },
+  title: {
     ...Typography.displayLarge,
-    letterSpacing: 0.5,
     color: Colors.textPrimary,
   },
   lede: {
@@ -325,93 +409,79 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: Spacing.tight,
   },
-  heading: {
-    ...Typography.display,
-    color: Colors.textPrimary,
+  cards: {
+    marginTop: Spacing.loose,
+    gap: Spacing.default - 4,
   },
-  sub: {
-    ...Typography.bodyLarge,
-    lineHeight: 24,
-    color: Colors.textSecondary,
-    marginTop: Spacing.tight,
-  },
-  list: {
-    marginTop: Spacing.spacious,
-    gap: Spacing.loose,
-  },
-  row: {
+  card: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: Spacing.default,
-  },
-  rowIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "rgba(45, 88, 66, 0.08)",
     alignItems: "center",
-    justifyContent: "center",
+    gap: Spacing.default - 2,
+    padding: Spacing.default,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+    borderWidth: 2,
+    borderColor: "transparent",
+    ...Shadow.card,
   },
-  rowText: {
+  cardSelected: {
+    borderColor: Colors.brand,
+  },
+  cardPressed: {
+    opacity: 0.85,
+  },
+  cardText: {
     flex: 1,
-    paddingTop: 2,
   },
-  rowTitle: {
+  cardTitle: {
     ...Typography.subheadline,
     color: Colors.textPrimary,
   },
-  rowBody: {
-    ...Typography.body,
-    lineHeight: 21,
+  cardBody: {
+    ...Typography.caption1,
     color: Colors.textSecondary,
     marginTop: 2,
   },
-  choices: {
-    marginTop: Spacing.spacious,
-    gap: Spacing.default,
-  },
-  choice: {
-    flexDirection: "row",
+  radio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.separator,
     alignItems: "center",
-    gap: Spacing.default,
-    minHeight: 60,
-    paddingHorizontal: Spacing.default,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: Colors.glass,
-    backgroundColor: Colors.background,
+    justifyContent: "center",
   },
-  choiceSelected: {
-    backgroundColor: Colors.leaf,
-    borderColor: Colors.leaf,
-  },
-  choiceLabel: {
-    ...Typography.bodyLarge,
-    color: Colors.textPrimary,
-    flex: 1,
-  },
-  choiceLabelSelected: {
-    color: "#FFFFFF",
-    fontWeight: "600",
+  radioSelected: {
+    backgroundColor: Colors.brand,
+    borderColor: Colors.brand,
   },
   fine: {
     ...Typography.caption1,
     color: Colors.textSecondary,
     marginTop: Spacing.loose,
+    textAlign: "center",
   },
   footer: {
     paddingHorizontal: Spacing.loose,
     paddingTop: Spacing.default,
-    paddingBottom: Spacing.tight,
   },
-  secondaryAction: {
+  back: {
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     marginTop: Spacing.compact,
   },
-  secondaryActionText: {
+  backText: {
     ...Typography.bodyLarge,
-    color: Colors.leaf,
+    color: Colors.brand,
+    fontWeight: "600",
+  },
+  welcomeFine: {
+    ...Typography.caption1,
+    color: "rgba(255, 255, 255, 0.7)",
+    textAlign: "center",
+    minHeight: 44,
+    lineHeight: 44,
+    marginTop: Spacing.compact,
   },
 });

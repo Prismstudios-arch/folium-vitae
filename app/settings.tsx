@@ -1,25 +1,14 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Switch,
-  Alert,
-  Share,
-  ActivityIndicator,
-  Linking,
-} from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Share, ActivityIndicator, Linking, Image } from "react-native";
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
-import { Colors, Spacing, Typography } from "@constants/theme";
+import { Colors, Radius, Spacing, Tiles, Typography } from "@constants/theme";
 import { SUPPORT_EMAIL, MANAGE_SUBSCRIPTION_URL } from "@constants/config";
-import {
-  getUserPreferences,
-  saveUserPreferences,
-  UserPreferences,
-} from "@services/userPreferences";
+import { HeroCard } from "@components/HeroCard";
+import { Icon } from "@components/Icon";
+import { ListGroup, ListRow, ListSwitchRow } from "@components/ListGroup";
+import { ScreenHeader } from "@components/ScreenHeader";
+import { getUserPreferences, saveUserPreferences, UserPreferences } from "@services/userPreferences";
 import { exportEverything, deleteEverything, ServerDeletionError } from "@services/accountData";
 import { restorePurchases, syncEntitlementsWithServer } from "@services/purchases";
 import {
@@ -28,7 +17,6 @@ import {
   cancelAllWateringReminders,
 } from "@services/wateringReminders";
 import { useGoBack } from "@hooks/useGoBack";
-import { ScreenHeader } from "@components/ScreenHeader";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -37,16 +25,10 @@ export default function SettingsScreen() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void loadPreferences();
+    getUserPreferences()
+      .then(setPrefs)
+      .catch((error) => console.error("Failed to load preferences:", error));
   }, []);
-
-  const loadPreferences = async () => {
-    try {
-      setPrefs(await getUserPreferences());
-    } catch (error) {
-      console.error("Failed to load preferences:", error);
-    }
-  };
 
   const update = async (changes: Partial<UserPreferences>) => {
     if (!prefs) return;
@@ -59,9 +41,9 @@ export default function SettingsScreen() {
   };
 
   /**
-   * The reminders switch used to save a value that nothing read. Turning it
-   * on now asks for notification permission — at the moment the reason is
-   * obvious — and schedules reminders for every plant with enough history.
+   * Turning reminders on asks for notification permission — at the moment
+   * the reason is obvious — and schedules reminders for every plant with
+   * enough history.
    */
   const handleToggleReminders = async (value: boolean) => {
     if (!prefs || busy) return;
@@ -71,10 +53,7 @@ export default function SettingsScreen() {
 
       if (!permission.granted) {
         if (permission.canAskAgain) {
-          Alert.alert(
-            "Reminders need notifications",
-            "Sorrel can't remind you without permission to send notifications."
-          );
+          Alert.alert("Reminders need notifications", "Sorrel can't remind you without permission to send notifications.");
         } else {
           Alert.alert(
             "Notifications are off",
@@ -105,10 +84,7 @@ export default function SettingsScreen() {
   const handleExportData = async () => {
     setBusy(true);
     try {
-      await Share.share({
-        message: await exportEverything(),
-        title: "Sorrel data export",
-      });
+      await Share.share({ message: await exportEverything(), title: "Sorrel data export" });
     } catch {
       Alert.alert("Couldn't export", "Your data couldn't be gathered just now. Try again.");
     } finally {
@@ -126,10 +102,7 @@ export default function SettingsScreen() {
       if (outcome.status === "failed") {
         Alert.alert("Couldn't restore", outcome.message ?? "Try again in a moment.");
       } else if (outcome.activeEntitlements.length === 0) {
-        Alert.alert(
-          "Nothing to restore",
-          outcome.message ?? "No previous purchases found on this Apple ID."
-        );
+        Alert.alert("Nothing to restore", outcome.message ?? "No previous purchases found on this Apple ID.");
       } else {
         await syncEntitlementsWithServer();
         Alert.alert("Restored", "Your subscription is active on this phone again.");
@@ -158,11 +131,7 @@ export default function SettingsScreen() {
           "Nothing has been deleted. Try again when you're online, or clear this phone now and remove your account later.",
           [
             { text: "Cancel", style: "cancel" },
-            {
-              text: "Delete from this phone",
-              style: "destructive",
-              onPress: () => void runDelete(true),
-            },
+            { text: "Delete from this phone", style: "destructive", onPress: () => void runDelete(true) },
           ]
         );
       } else {
@@ -190,402 +159,301 @@ export default function SettingsScreen() {
 
   if (!prefs) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.leaf} />
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color={Colors.brand} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      {/* The only way out used to be a link at the very bottom of the page. */}
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <ScreenHeader onBack={goBack} backLabel="Home" title="Settings" />
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Subscription</Text>
+      {/* Nothing in the app opened the paywall before, so Premium could not
+          be bought — and App Review has to be able to find it. */}
+      <Pressable
+        onPress={() => router.push("/subscription")}
+        style={({ pressed }) => [styles.premium, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Sorrel Premium. Unlimited identifications and plant health checks"
+      >
+        <HeroCard contentStyle={styles.premiumContent}>
+          <View style={styles.premiumRow}>
+            <View style={styles.premiumText}>
+              <View style={styles.premiumBadge}>
+                <Icon name="crown.fill" size={11} color={Colors.brandDeep} />
+                <Text style={styles.premiumBadgeText}>Premium</Text>
+              </View>
+              <Text style={styles.premiumTitle}>Unlock everything</Text>
+              <Text style={styles.premiumBody}>Unlimited identifications and plant health checks</Text>
+            </View>
+            <Icon name="chevron.right" size={16} color="#FFFFFF" weight="semibold" />
+          </View>
+        </HeroCard>
+      </Pressable>
 
-        {/* Nothing in the app opened the paywall, so Premium could not be
-            bought — and App Review has to be able to find it. */}
-        <TouchableOpacity
-          style={styles.linkRow}
-          onPress={() => router.push("/subscription")}
-          accessibilityRole="button"
-        >
-          <Text style={styles.linkLabel}>Sorrel Premium</Text>
-          <Text style={styles.linkHint}>Unlimited identifications and plant health checks</Text>
-        </TouchableOpacity>
-
-        {/* SPEC §5 lists Restore purchases in Settings; it was only on the
-            paywall. */}
-        <TouchableOpacity
-          style={styles.linkRow}
-          onPress={handleRestore}
-          disabled={busy}
-          accessibilityRole="button"
-        >
-          <Text style={styles.linkLabel}>Restore purchases</Text>
-          <Text style={styles.linkHint}>After reinstalling or moving to a new phone</Text>
-        </TouchableOpacity>
-
-        {/* Top-level and deep-linked to Apple's own page, per SPEC §9. Making
-            someone hunt for how to cancel is the dark pattern this product
-            is positioned against. */}
-        <TouchableOpacity
-          style={styles.linkRow}
+      <ListGroup title="Subscription">
+        <ListRow icon="arrow.clockwise" tint={Tiles.blue} title="Restore purchases" onPress={handleRestore} disabled={busy} />
+        <ListRow
+          icon="creditcard.fill"
+          tint={Tiles.green}
+          title="Manage subscription"
           onPress={() => Linking.openURL(MANAGE_SUBSCRIPTION_URL)}
-          accessibilityRole="link"
-        >
-          <Text style={styles.linkLabel}>Manage subscription</Text>
-          <Text style={styles.linkHint}>Opens Apple's subscription settings</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.linkRow}
+        />
+        <ListRow
+          icon="questionmark"
+          tint={Tiles.grey}
+          title="How do I cancel?"
           onPress={() =>
             Alert.alert(
               "How to cancel",
-              "Tap Manage subscription above. That opens Apple's page, where you " +
-                "pick Sorrel and tap Cancel Subscription.\n\n" +
+              "Tap Manage subscription. That opens Apple's page, where you pick Sorrel and tap Cancel Subscription.\n\n" +
                 "You keep access until the period you have paid for ends.\n\n" +
                 "Stuck? Email us and we'll walk you through it."
             )
           }
-          accessibilityRole="button"
-        >
-          <Text style={styles.linkLabel}>How do I cancel?</Text>
-          <Text style={styles.linkHint}>A straight answer, in two taps</Text>
-        </TouchableOpacity>
-      </View>
+        />
+      </ListGroup>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Preferences</Text>
+      <ListGroup title="Preferences" footer="Units set temperatures in care notes. Hemisphere works out which season your plants are in.">
+        <ListRow
+          icon="thermometer.medium"
+          tint={Tiles.orange}
+          title="Units"
+          accessory={
+            <Segmented
+              options={[
+                { value: "metric", label: "°C" },
+                { value: "imperial", label: "°F" },
+              ]}
+              value={prefs.units}
+              onChange={(units) => update({ units })}
+            />
+          }
+        />
+        <ListRow
+          icon="globe.europe.africa.fill"
+          tint={Tiles.teal}
+          title="Hemisphere"
+          accessory={
+            <Segmented
+              options={[
+                { value: "north", label: "North" },
+                { value: "south", label: "South" },
+              ]}
+              value={prefs.hemisphere}
+              onChange={(hemisphere) => update({ hemisphere })}
+            />
+          }
+        />
+      </ListGroup>
 
-        <View style={styles.settingGroup}>
-          <Text style={styles.settingLabel}>Measurement units</Text>
-          {/* Nothing read this before; care cards now show temperatures in it. */}
-          <Text style={styles.settingDescription}>Used for temperatures in care notes</Text>
-          <View style={styles.toggleGroup}>
-            {(["metric", "imperial"] as const).map((units) => (
-              <TouchableOpacity
-                key={units}
-                style={[styles.toggleOption, prefs.units === units && styles.toggleOptionActive]}
-                onPress={() => update({ units })}
-                accessibilityRole="button"
-                accessibilityState={{ selected: prefs.units === units }}
-              >
-                <Text
-                  style={[
-                    styles.toggleOptionText,
-                    prefs.units === units && styles.toggleOptionTextActive,
-                  ]}
-                >
-                  {units === "metric" ? "Metric (°C)" : "Imperial (°F)"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+      <ListGroup title="Safety and reminders">
+        <ListSwitchRow
+          icon="exclamationmark.triangle.fill"
+          tint={Tiles.amber}
+          title="Toxicity warnings"
+          subtitle="When a plant is toxic to people or pets"
+          value={prefs.showToxicityWarnings}
+          onValueChange={(value) => update({ showToxicityWarnings: value })}
+        />
+        <ListSwitchRow
+          icon="bell.fill"
+          tint={Tiles.red}
+          title="Watering reminders"
+          subtitle="Based on your own watering log"
+          value={prefs.notificationsEnabled}
+          onValueChange={handleToggleReminders}
+          disabled={busy}
+        />
+      </ListGroup>
 
-        <View style={styles.settingGroup}>
-          <Text style={styles.settingLabel}>Growing hemisphere</Text>
-          {/* It claimed to drive seasonal advice while nothing read it. The
-              watering log now uses it to say which season your plants are in. */}
-          <Text style={styles.settingDescription}>
-            Used to work out which season your plants are in
-          </Text>
-          <View style={styles.toggleGroup}>
-            {(["north", "south"] as const).map((hemisphere) => (
-              <TouchableOpacity
-                key={hemisphere}
-                style={[
-                  styles.toggleOption,
-                  prefs.hemisphere === hemisphere && styles.toggleOptionActive,
-                ]}
-                onPress={() => update({ hemisphere })}
-                accessibilityRole="button"
-                accessibilityState={{ selected: prefs.hemisphere === hemisphere }}
-              >
-                <Text
-                  style={[
-                    styles.toggleOptionText,
-                    prefs.hemisphere === hemisphere && styles.toggleOptionTextActive,
-                  ]}
-                >
-                  {hemisphere === "north" ? "Northern" : "Southern"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      </View>
+      <ListGroup title="Your data">
+        <ListRow
+          icon="square.and.arrow.up"
+          tint={Tiles.blue}
+          title="Export my data"
+          subtitle="Plants, settings and identification history"
+          onPress={handleExportData}
+          disabled={busy}
+        />
+        <ListRow
+          icon="trash.fill"
+          title="Delete all data"
+          subtitle="From this phone and our server"
+          onPress={handleDeleteAll}
+          disabled={busy}
+          destructive
+        />
+      </ListGroup>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Safety</Text>
-
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Show toxicity warnings</Text>
-            <Text style={styles.settingDescription}>
-              Warn when an identified plant is toxic to people or pets
-            </Text>
-          </View>
-          <Switch
-            value={prefs.showToxicityWarnings}
-            onValueChange={(value) => update({ showToxicityWarnings: value })}
-            trackColor={{ false: Colors.glass, true: Colors.leafLight }}
-            thumbColor={prefs.showToxicityWarnings ? Colors.leaf : Colors.textDisabled}
-          />
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notifications</Text>
-
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Watering reminders</Text>
-            <Text style={styles.settingDescription}>
-              A nudge to check a plant when it's usually due, based on your own watering log
-            </Text>
-          </View>
-          <Switch
-            value={prefs.notificationsEnabled}
-            onValueChange={handleToggleReminders}
-            disabled={busy}
-            trackColor={{ false: Colors.glass, true: Colors.leafLight }}
-            thumbColor={prefs.notificationsEnabled ? Colors.leaf : Colors.textDisabled}
-          />
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Your data</Text>
-
-        <TouchableOpacity style={styles.dataButton} onPress={handleExportData} disabled={busy}>
-          <Text style={styles.dataButtonText}>Export my data</Text>
-          <Text style={styles.dataButtonDescription}>
-            Your plants, settings and identification history, as a file you can share
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.dataButton} onPress={handleDeleteAll} disabled={busy}>
-          <Text style={[styles.dataButtonText, styles.destructive]}>Delete all data</Text>
-          <Text style={styles.dataButtonDescription}>
-            Removes everything from this phone and your account from our server
-          </Text>
-        </TouchableOpacity>
-
-        {busy ? <ActivityIndicator color={Colors.leaf} style={styles.busy} /> : null}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Legal & support</Text>
-
-        <TouchableOpacity
-          style={styles.linkRow}
-          onPress={() => router.push("/privacy")}
-          accessibilityRole="button"
-        >
-          <Text style={styles.linkLabel}>Privacy</Text>
-          <Text style={styles.linkHint}>What we collect, and what we don't</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.linkRow}
-          onPress={() => router.push("/terms")}
-          accessibilityRole="button"
-        >
-          <Text style={styles.linkLabel}>Terms of use</Text>
-          <Text style={styles.linkHint}>Including what an identification is worth</Text>
-        </TouchableOpacity>
-
-        {/* A real address, not a contact form (SPEC §5). */}
-        <TouchableOpacity
-          style={styles.linkRow}
+      <ListGroup title="Legal and support">
+        <ListRow icon="hand.raised.fill" tint={Tiles.blue} title="Privacy" onPress={() => router.push("/privacy")} />
+        <ListRow icon="doc.text.fill" tint={Tiles.grey} title="Terms of use" onPress={() => router.push("/terms")} />
+        <ListRow
+          icon="envelope.fill"
+          tint={Tiles.green}
+          title="Contact us"
+          subtitle={SUPPORT_EMAIL}
           onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
-          accessibilityRole="link"
-        >
-          <Text style={styles.linkLabel}>Contact us</Text>
-          <Text style={styles.linkHint}>{SUPPORT_EMAIL}</Text>
-        </TouchableOpacity>
-      </View>
+        />
+      </ListGroup>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
-
-        {/* Read from the app config. The hardcoded "1.0.0" and "Build: Phase 1"
-            would have been wrong from the second release. */}
-        <View style={styles.aboutRow}>
-          <Text style={styles.aboutLabel}>Version</Text>
-          <Text style={styles.aboutValue}>{Constants.expoConfig?.version ?? "—"}</Text>
-        </View>
-
-        {/* "Never give you bad advice" was a promise no plant app can keep. */}
-        <Text style={styles.aboutText}>
-          Sorrel tells you when it isn't sure, shows you the other possibilities, and never makes
-          it hard to cancel.
+      {/* The version comes from the app config; the old hardcoded "1.0.0"
+          and "Build: Phase 1" would have been wrong from the second release.
+          The text wraps: the old line ran off the right edge of the screen. */}
+      <View style={styles.footer}>
+        <Image source={require("../assets/brand-mark.png")} style={styles.footerMark} accessibilityIgnoresInvertColors />
+        <Text style={styles.footerName}>Sorrel {Constants.expoConfig?.version ?? ""}</Text>
+        <Text style={styles.footerText}>
+          Tells you when it isn't sure, shows you the other possibilities, and never makes it hard
+          to cancel.
         </Text>
       </View>
 
-      <View style={styles.spacer} />
+      {busy ? <ActivityIndicator color={Colors.brand} style={styles.busy} /> : null}
     </ScrollView>
+  );
+}
+
+function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<{ value: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <View style={styles.segmented} accessibilityRole="radiogroup">
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            style={[styles.segment, selected && styles.segmentSelected]}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected }}
+          >
+            <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{option.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.bg,
   },
-  loadingContainer: {
+  content: {
+    paddingBottom: Spacing.extra,
+  },
+  loading: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.bg,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
   },
-  header: {
-    paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.default,
+  premium: {
+    marginHorizontal: Spacing.default,
+    marginBottom: Spacing.loose,
   },
-  backLink: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.leaf,
-    fontWeight: "600" as any,
-    marginBottom: Spacing.compact,
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
   },
-  screenTitle: {
-    fontSize: Typography.display.fontSize,
-    fontWeight: Typography.display.fontWeight as any,
-    color: Colors.textPrimary,
+  premiumContent: {
+    paddingVertical: Spacing.loose,
   },
-  section: {
-    marginBottom: Spacing.default,
-    paddingHorizontal: Spacing.default,
-  },
-  sectionTitle: {
-    fontSize: Typography.headline.fontSize,
-    fontWeight: Typography.headline.fontWeight as any,
-    color: Colors.textPrimary,
-    marginTop: Spacing.loose,
-    marginBottom: Spacing.default,
-  },
-  settingGroup: {
-    marginBottom: Spacing.default,
-    backgroundColor: Colors.glass,
-    borderRadius: 12,
-    padding: Spacing.default,
-  },
-  settingLabel: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.compact,
-  },
-  settingDescription: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.default,
-  },
-  toggleGroup: {
-    flexDirection: "row",
-    gap: Spacing.compact,
-  },
-  toggleOption: {
-    flex: 1,
-    paddingVertical: Spacing.compact,
-    paddingHorizontal: Spacing.default,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.glass,
-    alignItems: "center",
-    backgroundColor: Colors.background,
-  },
-  toggleOptionActive: {
-    backgroundColor: Colors.leaf,
-    borderColor: Colors.leaf,
-  },
-  toggleOptionText: {
-    fontSize: Typography.body.fontSize,
-    color: Colors.textPrimary,
-  },
-  toggleOptionTextActive: {
-    color: "#FFFFFF",
-    fontWeight: "600" as any,
-  },
-  settingRow: {
+  premiumRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: Spacing.default,
-    paddingHorizontal: Spacing.default,
-    backgroundColor: Colors.glass,
-    borderRadius: 12,
-    marginBottom: Spacing.default,
   },
-  settingInfo: {
+  premiumText: {
     flex: 1,
-    marginRight: Spacing.default,
+    paddingRight: 110,
   },
-  dataButton: {
-    backgroundColor: Colors.glass,
-    borderRadius: 12,
-    padding: Spacing.default,
-    marginBottom: Spacing.default,
+  premiumBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.brandBright,
   },
-  dataButtonText: {
-    fontSize: Typography.subheadline.fontSize,
-    fontWeight: Typography.subheadline.fontWeight as any,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.compact,
-  },
-  destructive: {
-    color: Colors.error,
-  },
-  dataButtonDescription: {
-    fontSize: Typography.caption1.fontSize,
-    color: Colors.textSecondary,
-  },
-  busy: {
-    marginTop: Spacing.compact,
-  },
-  linkRow: {
-    paddingVertical: Spacing.default,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.glass,
-  },
-  linkLabel: {
-    ...Typography.bodyLarge,
-    color: Colors.textPrimary,
-  },
-  linkHint: {
+  premiumBadgeText: {
     ...Typography.caption2,
-    color: Colors.textSecondary,
+    fontWeight: "700",
+    color: Colors.brandDeep,
+  },
+  premiumTitle: {
+    ...Typography.headline,
+    color: "#FFFFFF",
+    marginTop: Spacing.tight,
+  },
+  premiumBody: {
+    ...Typography.caption1,
+    color: "rgba(255, 255, 255, 0.8)",
     marginTop: 2,
   },
-  aboutRow: {
+  segmented: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: Spacing.compact,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.glass,
-    marginBottom: Spacing.compact,
+    padding: 2,
+    borderRadius: 9,
+    backgroundColor: Colors.bg,
   },
-  aboutLabel: {
-    fontSize: Typography.body.fontSize,
+  segment: {
+    minWidth: 56,
+    height: 30,
+    paddingHorizontal: Spacing.tight,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  segmentSelected: {
+    backgroundColor: Colors.card,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  segmentText: {
+    ...Typography.caption1,
+    fontWeight: "500",
     color: Colors.textSecondary,
   },
-  aboutValue: {
-    fontSize: Typography.body.fontSize,
-    fontWeight: "600" as any,
+  segmentTextSelected: {
+    color: Colors.textPrimary,
+    fontWeight: "600",
+  },
+  footer: {
+    alignItems: "center",
+    paddingHorizontal: Spacing.spacious,
+    marginTop: Spacing.default,
+    gap: Spacing.tight,
+  },
+  footerMark: {
+    width: 44,
+    height: 44,
+  },
+  footerName: {
+    ...Typography.subheadline,
     color: Colors.textPrimary,
   },
-  aboutText: {
-    fontSize: Typography.caption1.fontSize,
+  footerText: {
+    ...Typography.caption1,
     color: Colors.textSecondary,
-    lineHeight: 20,
-    marginVertical: Spacing.default,
+    textAlign: "center",
   },
-  spacer: {
-    height: Spacing.spacious,
+  busy: {
+    marginTop: Spacing.default,
   },
 });

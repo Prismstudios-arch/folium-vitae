@@ -1,21 +1,19 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Linking,
-} from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Linking, Image } from "react-native";
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { Colors, Spacing, Typography } from "@constants/theme";
-import { Button, SecondaryButton } from "@components/Button";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import type { SFSymbol } from "expo-symbols";
+import { Colors, Radius, Shadow, Spacing, Tiles, Typography } from "@constants/theme";
+import { Button } from "@components/Button";
+import { HeroCard } from "@components/HeroCard";
+import { Icon } from "@components/Icon";
+import { IconTile } from "@components/ListGroup";
+import { HeaderIconButton } from "@components/ScreenHeader";
 import { SUPPORT_EMAIL } from "@constants/config";
 import {
   Plan,
-  getPlans,
+  loadPlans,
   purchase,
   restorePurchases,
   purchasesStatus,
@@ -26,32 +24,30 @@ import { addTrialLength } from "@services/subscriptionTerms";
 import { scheduleTrialReminder } from "@services/trialReminder";
 import { getApiClient } from "@services/apiClient";
 import { useGoBack } from "@hooks/useGoBack";
-import { Icon } from "@components/Icon";
 
 /**
  * Paywall.
  *
- * Built to SPEC §9, which treats the following as product requirements
- * rather than nice-to-haves:
+ * Built to SPEC §9, which treats these as product requirements:
  *
  *  - Price, period and renewal shown in plain text before a trial starts.
- *  - A close button visible from the first frame. No delay, no tiny grey X.
+ *  - A close button visible from the first frame.
  *  - No fake countdowns, no fake discounts, no "97% off today only".
  *  - Terms and privacy links present, which Guideline 3.1.2 also requires.
  *  - Every price comes from the store, localised. Nothing is hardcoded.
- *
- * And one this screen used to break: only offer what the subscription
- * actually adds. It advertised "the full offline care library" — which free
- * users already see, and which holds a handful of plants.
+ *  - Only offer what the subscription actually adds.
  */
 export default function SubscriptionScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const goBack = useGoBack("/");
 
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [freeLimit, setFreeLimit] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
+  const [purchasing, setPurchasing] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
   const status = purchasesStatus();
@@ -59,64 +55,64 @@ export default function SubscriptionScreen() {
   useEffect(() => {
     void load();
 
-    // The free allowance, from the server that enforces it — a hardcoded
-    // "7" here would quietly go wrong the day the limit changes. Only a free
+    // The free allowance, from the server that enforces it. Only a free
     // account's limit is the free limit; otherwise the number is left out.
     getApiClient()
       .getQuota()
       .then((quota) => {
         if (quota.plan === "free") setFreeLimit(quota.limit);
       })
-      .catch(() => {
-        // Offline. The sentence reads fine without a number.
-      });
+      .catch(() => undefined);
   }, []);
 
   const load = async () => {
     setLoading(true);
     try {
-      setPlans(await getPlans());
+      const result = await loadPlans();
+      setPlans(result.plans);
+      setProblem(result.problem);
+
+      // Default to the longest period — usually the best value — without
+      // hiding the others.
+      const preferred =
+        result.plans.find((plan) => plan.period === "year") ?? result.plans[0] ?? null;
+      setSelectedId(preferred?.packageId ?? null);
     } finally {
       setLoading(false);
     }
   };
 
+  const selected = plans.find((plan) => plan.packageId === selectedId) ?? null;
   const periodText = (plan: Plan) => (plan.period ? ` per ${plan.period}` : "");
 
-  const handlePurchase = async (plan: Plan) => {
-    if (busyPlanId) return;
+  const handlePurchase = async () => {
+    if (!selected || purchasing) return;
 
-    setBusyPlanId(plan.packageId);
+    setPurchasing(true);
     try {
-      const outcome = await purchase(plan.packageId);
+      const outcome = await purchase(selected.packageId);
 
-      if (outcome.status === "cancelled") {
-        // Deliberately silent. Someone who backed out does not need a dialog.
-        return;
-      }
+      if (outcome.status === "cancelled") return; // Someone who backed out needs no dialog.
 
       if (outcome.status === "failed") {
         Alert.alert("Not completed", outcome.message ?? "You have not been charged.");
         return;
       }
 
-      // Apply it on the server now, not whenever the webhook lands —
-      // otherwise the first Premium feature opened after paying could still
-      // say it's locked.
+      // Apply it on the server now, not whenever the webhook lands.
       await syncEntitlementsWithServer();
 
-      // Scheduling can fail, or be refused. That must neither swallow the
-      // confirmation of a purchase that went through, nor let the message
-      // promise a reminder that wasn't set.
+      // Scheduling can fail or be refused. That must neither swallow the
+      // purchase confirmation nor promise a reminder that wasn't set.
       let reminderSet = false;
-      if (plan.trial) {
+      if (selected.trial) {
         try {
-          const chargeDate = addTrialLength(new Date(), plan.trial.unit, plan.trial.count);
+          const chargeDate = addTrialLength(new Date(), selected.trial.unit, selected.trial.count);
           reminderSet =
             (await scheduleTrialReminder({
               chargeDate,
-              priceString: plan.priceString,
-              period: plan.period,
+              priceString: selected.priceString,
+              period: selected.period,
             })) !== null;
         } catch (error) {
           console.warn("Couldn't schedule the trial reminder:", error);
@@ -124,16 +120,16 @@ export default function SubscriptionScreen() {
       }
 
       Alert.alert(
-        "You're in",
-        plan.trial
+        "Welcome to Premium",
+        selected.trial
           ? reminderSet
-            ? `Your ${plan.trial.duration} trial has started. We'll remind you 2 days before it ends.`
-            : `Your ${plan.trial.duration} trial has started. It then renews at ${plan.priceString}${periodText(plan)} unless you cancel before it ends.`
-          : "Thanks — Premium is unlocked.",
+            ? `Your ${selected.trial.duration} trial has started. We'll remind you 2 days before it ends.`
+            : `Your ${selected.trial.duration} trial has started. It then renews at ${selected.priceString}${periodText(selected)} unless you cancel before it ends.`
+          : "Everything is unlocked.",
         [{ text: "Done", onPress: goBack }]
       );
     } finally {
-      setBusyPlanId(null);
+      setPurchasing(false);
     }
   };
 
@@ -144,25 +140,18 @@ export default function SubscriptionScreen() {
     try {
       const outcome = await restorePurchases();
 
-      // A failure used to be titled "Nothing to restore", and finding
-      // nothing came with "Your subscription is active again".
       if (outcome.status === "failed") {
         Alert.alert("Couldn't restore", outcome.message ?? "Try again in a moment.");
         return;
       }
 
       if (outcome.activeEntitlements.length === 0) {
-        Alert.alert(
-          "Nothing to restore",
-          outcome.message ?? "No previous purchases found on this Apple ID."
-        );
+        Alert.alert("Nothing to restore", outcome.message ?? "No previous purchases found on this Apple ID.");
         return;
       }
 
       await syncEntitlementsWithServer();
-      Alert.alert("Restored", "Your subscription is active on this phone again.", [
-        { text: "Done", onPress: goBack },
-      ]);
+      Alert.alert("Restored", "Your subscription is active on this phone again.", [{ text: "Done", onPress: goBack }]);
     } finally {
       setRestoring(false);
     }
@@ -170,300 +159,407 @@ export default function SubscriptionScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Visible from the first frame, top-left, full size. SPEC §9. */}
-      <View style={styles.topBar}>
-        <TouchableOpacity
-          onPress={goBack}
-          style={styles.close}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      <StatusBar style="light" />
+
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + Spacing.loose }]} showsVerticalScrollIndicator={false}>
+        <HeroCard
+          rounded={false}
+          contentStyle={[styles.heroContent, { paddingTop: insets.top + 64 }]}
+          illustrationStyle={{ right: -80, bottom: -20, width: 220, height: 198 }}
         >
-          <Icon name="xmark" size={17} color={Colors.textSecondary} weight="semibold" />
-        </TouchableOpacity>
-      </View>
+          <Image source={require("../assets/brand-mark.png")} style={styles.heroMark} accessibilityIgnoresInvertColors />
+          <Text style={styles.heroTitle}>Sorrel Premium</Text>
+          <Text style={styles.heroBody}>Everything Sorrel can do,{"\n"}with no daily limit.</Text>
+        </HeroCard>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Sorrel Premium</Text>
-        <View style={styles.benefits}>
-          <View style={styles.benefit}>
-            <View style={styles.benefitIcon}>
-              <Icon name="infinity" size={18} />
-            </View>
-            <Text style={styles.benefitText}>Unlimited identifications, every day</Text>
+        <View style={styles.sheet}>
+          <View style={styles.benefits}>
+            <Benefit icon="infinity" color={Tiles.blue} title="Unlimited identifications" detail="No daily limit, ever" />
+            <Benefit icon="stethoscope" color={Tiles.teal} title="Plant health checks" detail="Likely causes, and what to try first" last />
           </View>
-          <View style={styles.benefit}>
-            <View style={styles.benefitIcon}>
-              <Icon name="stethoscope" size={18} />
-            </View>
-            <Text style={styles.benefitText}>
-              Health checks: the likely causes when a plant looks wrong, and what to try first
-            </Text>
-          </View>
-        </View>
 
-        <View style={styles.freeNote}>
-          <Text style={styles.freeNoteText}>
-            The free tier keeps working either way —{" "}
-            {freeLimit !== null
-              ? `${freeLimit} identifications a day`
-              : "a daily allowance of identifications"}
-            , care notes, your whole collection and watering reminders. Nothing you already have
-            gets taken away.
+          <Text style={styles.freeNote}>
+            Free keeps working either way —{" "}
+            {freeLimit !== null ? `${freeLimit} identifications a day` : "a daily allowance of identifications"}, care
+            notes, your collection and reminders.
           </Text>
-        </View>
 
-        {loading ? (
-          <ActivityIndicator size="large" color={Colors.leaf} style={styles.loader} />
-        ) : !status.available ? (
-          <View style={styles.unavailable}>
-            <Text style={styles.unavailableTitle}>Not available yet</Text>
-            <Text style={styles.unavailableText}>{status.reason}</Text>
-          </View>
-        ) : plans.length === 0 ? (
-          <View style={styles.unavailable}>
-            <Text style={styles.unavailableTitle}>Nothing to show</Text>
-            <Text style={styles.unavailableText}>
-              We couldn't load plans right now. Check your connection and try again — you haven't
-              been charged for anything.
-            </Text>
-            <SecondaryButton label="Try again" onPress={load} style={styles.retry} />
-          </View>
-        ) : (
-          plans.map((plan) => (
-            <View key={plan.packageId} style={styles.planCard}>
-              <Text style={styles.planTitle}>{plan.title}</Text>
+          {loading ? (
+            <ActivityIndicator size="large" color={Colors.brand} style={styles.loader} />
+          ) : !status.available ? (
+            <Notice title="Not available on this build" body={status.reason} />
+          ) : plans.length === 0 ? (
+            <Notice
+              title="Plans aren't available right now"
+              body={`${problem ?? "Couldn't load plans."} You haven't been charged for anything.`}
+              onRetry={load}
+            />
+          ) : (
+            <>
+              <View style={styles.plans}>
+                {plans.map((plan) => (
+                  <PlanCard
+                    key={plan.packageId}
+                    plan={plan}
+                    selected={plan.packageId === selectedId}
+                    onPress={() => setSelectedId(plan.packageId)}
+                  />
+                ))}
+              </View>
 
-              {/* The store's own localised string, so what is shown is what is
-                  charged, in the user's currency. */}
-              <Text style={styles.planPrice}>
-                {plan.priceString}
-                {plan.period ? <Text style={styles.planPeriod}> per {plan.period}</Text> : null}
-              </Text>
+              {selected ? (
+                <>
+                  <Button
+                    label={
+                      selected.trial
+                        ? `Start ${selected.trial.duration} free`
+                        : `Subscribe for ${selected.priceString}${periodText(selected)}`
+                    }
+                    onPress={handlePurchase}
+                    loading={purchasing}
+                    style={styles.cta}
+                  />
 
-              {plan.description ? (
-                <Text style={styles.planDescription}>{plan.description}</Text>
+                  {/* Full terms before anyone starts, in plain text. SPEC §9. */}
+                  <Text style={styles.terms}>
+                    {selected.trial
+                      ? `${selected.trial.duration} free, then ${selected.trial.thenPrice}${periodText(selected)}. Renews automatically until you cancel. Cancel any time in Settings — if notifications are on, we'll remind you 2 days before the first charge.`
+                      : `Renews automatically at ${selected.priceString}${periodText(selected)} until you cancel. Cancel any time in Settings.`}
+                  </Text>
+                </>
               ) : null}
+            </>
+          )}
 
-              {/* Full terms before the trial starts, in plain text, not a
-                  footnote. SPEC §9. */}
-              {plan.trial ? (
-                <Text style={styles.trialTerms}>
-                  {plan.trial.duration} free, then {plan.trial.thenPrice}
-                  {periodText(plan)}. Renews automatically until you cancel. Cancel any time in
-                  Settings — if notifications are on, we'll remind you 2 days before the first
-                  charge.
-                </Text>
-              ) : (
-                <Text style={styles.trialTerms}>
-                  Renews automatically at {plan.priceString}
-                  {periodText(plan)} until you cancel.
-                </Text>
-              )}
+          <View style={styles.links}>
+            <Pressable onPress={handleRestore} disabled={restoring} style={styles.linkButton} accessibilityRole="button">
+              {restoring ? <ActivityIndicator color={Colors.brand} /> : <Text style={styles.link}>Restore purchases</Text>}
+            </Pressable>
+            <Pressable onPress={() => Linking.openURL(manageSubscriptionsUrl())} style={styles.linkButton} accessibilityRole="link">
+              <Text style={styles.link}>Manage subscription</Text>
+            </Pressable>
+          </View>
 
-              <Button
-                label={plan.trial ? `Start ${plan.trial.duration} free` : "Subscribe"}
-                onPress={() => handlePurchase(plan)}
-                loading={busyPlanId === plan.packageId}
-                disabled={busyPlanId !== null}
-                style={styles.planButton}
-              />
-            </View>
-          ))
-        )}
-
-        {/* Apple requires a restore path for reinstalls and new devices. */}
-        <SecondaryButton
-          label="Restore purchases"
-          onPress={handleRestore}
-          loading={restoring}
-          style={styles.restore}
-        />
-
-        <TouchableOpacity
-          onPress={() => Linking.openURL(manageSubscriptionsUrl())}
-          accessibilityRole="link"
-        >
-          <Text style={styles.manageLink}>Manage or cancel an existing subscription</Text>
-        </TouchableOpacity>
-
-        <View style={styles.legal}>
-          <Text style={styles.legalText}>
-            Payment is charged to your Apple ID. Subscriptions renew unless cancelled at least 24
-            hours before the period ends. Manage them in your Apple account settings.
+          <Text style={styles.legal}>
+            Payment is charged to your Apple ID. Subscriptions renew unless cancelled at least 24 hours before the period
+            ends. Manage them in your Apple account settings.
           </Text>
 
           <View style={styles.legalLinks}>
-            <TouchableOpacity onPress={() => router.push("/terms")} accessibilityRole="button">
-              <Text style={styles.legalLink}>Terms of use</Text>
-            </TouchableOpacity>
+            <Pressable onPress={() => router.push("/terms")} accessibilityRole="button">
+              <Text style={styles.legalLink}>Terms</Text>
+            </Pressable>
             <Text style={styles.legalDivider}>·</Text>
-            <TouchableOpacity onPress={() => router.push("/privacy")} accessibilityRole="button">
+            <Pressable onPress={() => router.push("/privacy")} accessibilityRole="button">
               <Text style={styles.legalLink}>Privacy</Text>
-            </TouchableOpacity>
+            </Pressable>
             <Text style={styles.legalDivider}>·</Text>
-            <TouchableOpacity
-              onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
-              accessibilityRole="link"
-            >
+            <Pressable onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)} accessibilityRole="link">
               <Text style={styles.legalLink}>Contact</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </ScrollView>
+
+      {/* Visible from the first frame, top-left, full size. SPEC §9. */}
+      <View style={[styles.close, { top: insets.top + Spacing.tight }]}>
+        <HeaderIconButton icon="xmark" label="Close" onPress={goBack} onDark />
+      </View>
+    </View>
+  );
+}
+
+function Benefit({
+  icon,
+  color,
+  title,
+  detail,
+  last = false,
+}: {
+  icon: SFSymbol;
+  color: string;
+  title: string;
+  detail: string;
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.benefit, !last && styles.benefitDivider]}>
+      <IconTile icon={icon} color={color} size={36} />
+      <View style={styles.benefitText}>
+        <Text style={styles.benefitTitle}>{title}</Text>
+        <Text style={styles.benefitDetail}>{detail}</Text>
+      </View>
+      <Icon name="checkmark" size={15} color={Colors.brand} weight="bold" />
+    </View>
+  );
+}
+
+function PlanCard({ plan, selected, onPress }: { plan: Plan; selected: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.plan, selected && styles.planSelected, pressed && styles.planPressed]}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+    >
+      <View style={[styles.radio, selected && styles.radioSelected]}>
+        {selected ? <Icon name="checkmark" size={12} color="#FFFFFF" weight="bold" /> : null}
+      </View>
+
+      <View style={styles.planText}>
+        <View style={styles.planTitleRow}>
+          <Text style={styles.planTitle}>{plan.title}</Text>
+          {plan.trial ? (
+            <View style={styles.trialBadge}>
+              <Text style={styles.trialBadgeText}>{plan.trial.duration} free</Text>
+            </View>
+          ) : null}
+        </View>
+        {plan.description ? <Text style={styles.planDescription}>{plan.description}</Text> : null}
+      </View>
+
+      <View style={styles.planPrice}>
+        {/* The store's own localised string: what's shown is what's charged. */}
+        <Text style={styles.planPriceText}>{plan.priceString}</Text>
+        {plan.period ? <Text style={styles.planPeriod}>per {plan.period}</Text> : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function Notice({ title, body, onRetry }: { title: string; body: string; onRetry?: () => void }) {
+  return (
+    <View style={styles.notice}>
+      <IconTile icon="exclamationmark.circle.fill" color={Tiles.amber} size={36} />
+      <Text style={styles.noticeTitle}>{title}</Text>
+      <Text style={styles.noticeBody}>{body}</Text>
+      {onRetry ? <Button label="Try again" variant="secondary" onPress={onRetry} style={styles.noticeButton} /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  topBar: {
-    paddingTop: Spacing.default,
-    paddingHorizontal: Spacing.default,
-    paddingBottom: Spacing.tight,
+  container: {
+    flex: 1,
+    backgroundColor: Colors.bg,
   },
-  close: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.glass,
-    alignItems: "center",
-    justifyContent: "center",
+  scroll: {
+    flexGrow: 1,
+  },
+  heroContent: {
+    paddingBottom: 64,
+    paddingHorizontal: Spacing.loose,
+  },
+  heroMark: {
+    width: 64,
+    height: 64,
+    marginBottom: Spacing.default,
+  },
+  heroTitle: {
+    fontSize: 36,
+    lineHeight: 42,
+    fontWeight: "800",
+    letterSpacing: -0.4,
+    color: "#FFFFFF",
+  },
+  heroBody: {
+    ...Typography.bodyLarge,
+    lineHeight: 24,
+    color: "rgba(255, 255, 255, 0.82)",
+    marginTop: Spacing.tight,
+  },
+  sheet: {
+    marginTop: -28,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    backgroundColor: Colors.bg,
+    paddingHorizontal: Spacing.default,
+    paddingTop: Spacing.loose,
   },
   benefits: {
-    gap: Spacing.default,
-    marginTop: Spacing.default,
-    marginBottom: Spacing.loose,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.default,
+    ...Shadow.card,
   },
   benefit: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.default,
+    gap: Spacing.default - 4,
+    paddingVertical: Spacing.default - 2,
   },
-  benefitIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(45, 88, 66, 0.08)",
+  benefitDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.separator,
+  },
+  benefitText: {
+    flex: 1,
+  },
+  benefitTitle: {
+    ...Typography.subheadline,
+    color: Colors.textPrimary,
+  },
+  benefitDetail: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  freeNote: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    marginVertical: Spacing.default,
+    paddingHorizontal: Spacing.tight,
+  },
+  loader: {
+    marginVertical: Spacing.spacious,
+  },
+  plans: {
+    gap: Spacing.tight + 2,
+  },
+  plan: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.default - 4,
+    padding: Spacing.default,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+    borderWidth: 2,
+    borderColor: "transparent",
+    ...Shadow.card,
+  },
+  planSelected: {
+    borderColor: Colors.brand,
+  },
+  planPressed: {
+    opacity: 0.9,
+  },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: Colors.separator,
     alignItems: "center",
     justifyContent: "center",
   },
-  benefitText: {
-    ...Typography.bodyLarge,
-    color: Colors.textPrimary,
+  radioSelected: {
+    backgroundColor: Colors.brand,
+    borderColor: Colors.brand,
+  },
+  planText: {
     flex: 1,
   },
-  closeText: {
-    fontSize: 22,
-    color: Colors.textSecondary,
-  },
-  content: {
-    paddingHorizontal: Spacing.loose,
-    paddingBottom: Spacing.extra,
-  },
-  title: {
-    ...Typography.display,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.tight,
-  },
-  subtitle: {
-    ...Typography.bodyLarge,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.loose,
-  },
-  freeNote: {
-    backgroundColor: Colors.surface,
-    borderRadius: 8,
-    padding: Spacing.default,
-    marginBottom: Spacing.loose,
-  },
-  freeNoteText: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-  },
-  loader: { marginVertical: Spacing.extra },
-  unavailable: {
-    borderWidth: 1,
-    borderColor: Colors.glass,
-    borderRadius: 12,
-    padding: Spacing.loose,
-    marginBottom: Spacing.loose,
-  },
-  unavailableTitle: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.tight,
-  },
-  unavailableText: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-  },
-  retry: { marginTop: Spacing.default },
-  planCard: {
-    borderWidth: 1,
-    borderColor: Colors.glass,
-    borderRadius: 12,
-    padding: Spacing.loose,
-    marginBottom: Spacing.default,
+  planTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
   },
   planTitle: {
     ...Typography.subheadline,
     color: Colors.textPrimary,
   },
-  planPrice: {
-    ...Typography.displayLarge,
-    color: Colors.textPrimary,
-    marginTop: Spacing.compact,
+  trialBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.brandTint,
   },
-  planPeriod: {
-    ...Typography.body,
-    color: Colors.textSecondary,
+  trialBadgeText: {
+    ...Typography.caption2,
+    fontWeight: "700",
+    color: Colors.brandDark,
   },
   planDescription: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    marginTop: Spacing.tight,
-  },
-  trialTerms: {
     ...Typography.caption1,
     color: Colors.textSecondary,
-    marginTop: Spacing.default,
-    marginBottom: Spacing.default,
+    marginTop: 2,
   },
-  planButton: { marginTop: Spacing.compact },
-  restore: { marginTop: Spacing.default },
-  manageLink: {
-    ...Typography.body,
-    color: Colors.leaf,
-    textAlign: "center",
-    marginTop: Spacing.loose,
+  planPrice: {
+    alignItems: "flex-end",
   },
-  legal: {
-    marginTop: Spacing.spacious,
-    paddingTop: Spacing.loose,
-    borderTopWidth: 1,
-    borderTopColor: Colors.glass,
+  planPriceText: {
+    ...Typography.subheadline,
+    color: Colors.textPrimary,
+    fontVariant: ["tabular-nums"],
   },
-  legalText: {
+  planPeriod: {
     ...Typography.caption2,
     color: Colors.textSecondary,
-    marginBottom: Spacing.default,
+  },
+  cta: {
+    marginTop: Spacing.loose,
+  },
+  terms: {
+    ...Typography.caption2,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    marginTop: Spacing.tight + 2,
+    paddingHorizontal: Spacing.tight,
+  },
+  notice: {
+    alignItems: "center",
+    padding: Spacing.loose,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+    gap: Spacing.tight,
+  },
+  noticeTitle: {
+    ...Typography.subheadline,
+    color: Colors.textPrimary,
+    textAlign: "center",
+    marginTop: Spacing.tight,
+  },
+  noticeBody: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    textAlign: "center",
+  },
+  noticeButton: {
+    alignSelf: "stretch",
+    marginTop: Spacing.tight,
+  },
+  links: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: Spacing.loose,
+    marginTop: Spacing.loose,
+  },
+  linkButton: {
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  link: {
+    ...Typography.controlSmall,
+    color: Colors.brand,
+    fontWeight: "600",
+  },
+  legal: {
+    ...Typography.caption2,
+    color: Colors.textDisabled,
+    textAlign: "center",
+    marginTop: Spacing.default,
+    paddingHorizontal: Spacing.default,
   },
   legalLinks: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    flexWrap: "wrap",
+    marginTop: Spacing.tight,
   },
   legalLink: {
     ...Typography.caption1,
-    color: Colors.leaf,
+    color: Colors.textSecondary,
+    textDecorationLine: "underline",
   },
   legalDivider: {
     ...Typography.caption1,
     color: Colors.textDisabled,
     marginHorizontal: Spacing.tight,
+  },
+  close: {
+    position: "absolute",
+    left: Spacing.default,
   },
 });

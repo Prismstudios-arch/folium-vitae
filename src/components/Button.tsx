@@ -1,67 +1,94 @@
 import React from "react";
-import {
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  ViewStyle,
-  TextStyle,
-} from "react-native";
-import { Colors, Spacing, Typography, ComponentStyles } from "@constants/theme";
+import { Pressable, Text, StyleSheet, ActivityIndicator, StyleProp, ViewStyle, View } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import type { SFSymbol } from "expo-symbols";
+import { Colors, ComponentStyles, Motion, Typography } from "@constants/theme";
+import { Icon } from "./Icon";
 
-export type ButtonVariant = "primary" | "secondary" | "tertiary";
+export type ButtonVariant = "primary" | "secondary" | "tertiary" | "destructive" | "inverse";
 
 interface ButtonProps {
   label: string;
   onPress: () => void;
   variant?: ButtonVariant;
+  icon?: SFSymbol;
   disabled?: boolean;
   loading?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+const VARIANTS: Record<ButtonVariant, { background: string; text: string }> = {
+  primary: { background: Colors.brand, text: Colors.textOnBrand },
+  secondary: { background: Colors.brandTint, text: Colors.brandDark },
+  tertiary: { background: "transparent", text: Colors.brand },
+  destructive: { background: "#FBE9E6", text: Colors.error },
+  /** White, for the emerald hero surfaces. */
+  inverse: { background: "#FFFFFF", text: Colors.brandDeep },
+};
+
+/**
+ * The app's button.
+ *
+ * It settles back with a spring when pressed, the way native controls do.
+ * Disabled buttons keep their colour at reduced opacity: the previous version
+ * swapped to a pale grey fill but left the label white, so a disabled "Scan
+ * your first plant" was white text on light grey — unreadable.
+ */
 export function Button({
   label,
   onPress,
   variant = "primary",
+  icon,
   disabled = false,
   loading = false,
   style,
   testID,
 }: ButtonProps) {
   const isDisabled = disabled || loading;
+  const scale = useSharedValue(1);
+  const colors = VARIANTS[variant];
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
   return (
-    <TouchableOpacity
+    <AnimatedPressable
       onPress={onPress}
       disabled={isDisabled}
+      onPressIn={() => {
+        scale.value = withSpring(0.97, Motion.springs.standard);
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, Motion.springs.standard);
+      }}
       style={[
         styles.base,
-        styles[variant],
-        isDisabled && styles.disabled,
+        { backgroundColor: colors.background },
+        disabled && !loading && styles.disabled,
+        animatedStyle,
         style,
       ]}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
       testID={testID}
-      activeOpacity={0.7}
     >
       {loading ? (
-        <ActivityIndicator
-          color={variant === "primary" ? "#FFFFFF" : Colors.leaf}
-          size="small"
-        />
+        <ActivityIndicator color={colors.text} size="small" />
       ) : (
-        <Text style={[styles.text, styles[`text_${variant}`]]}>
-          {label}
-        </Text>
+        <View style={styles.content}>
+          {icon ? <Icon name={icon} size={18} color={colors.text} weight="semibold" /> : null}
+          <Text style={[styles.text, { color: colors.text }]}>{label}</Text>
+        </View>
       )}
-    </TouchableOpacity>
+    </AnimatedPressable>
   );
 }
 
-interface SecondaryButtonProps extends Omit<ButtonProps, "variant"> {
-  variant?: "secondary" | "tertiary";
-}
+interface SecondaryButtonProps extends Omit<ButtonProps, "variant"> {}
 
 export function SecondaryButton(props: SecondaryButtonProps) {
   return <Button {...props} variant="secondary" />;
@@ -79,30 +106,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  primary: {
-    backgroundColor: Colors.leaf,
-  },
-  secondary: {
-    backgroundColor: Colors.glass,
-  },
-  tertiary: {
-    backgroundColor: "transparent",
+  content: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   disabled: {
-    backgroundColor: Colors.glass,
-    opacity: 0.5,
+    opacity: 0.4,
   },
   text: {
-    fontSize: Typography.button.fontSize,
-    fontWeight: Typography.button.fontWeight as any,
-  },
-  text_primary: {
-    color: "#FFFFFF",
-  },
-  text_secondary: {
-    color: Colors.leaf,
-  },
-  text_tertiary: {
-    color: Colors.leaf,
+    ...Typography.button,
   },
 });

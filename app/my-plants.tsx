@@ -1,21 +1,13 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Image,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  Alert,
-} from "react-native";
+import { View, Text, StyleSheet, FlatList, Image, Pressable, TextInput, ActivityIndicator, Alert, ScrollView } from "react-native";
 import { useMemo, useState, useCallback } from "react";
 import { useRouter, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { Colors, Spacing, Typography } from "@constants/theme";
+import { Colors, Radius, Shadow, Spacing, Tiles, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
+import { Chip } from "@components/Chip";
 import { Icon } from "@components/Icon";
+import { IconTile } from "@components/ListGroup";
 import { ScreenHeader, HeaderIconButton } from "@components/ScreenHeader";
 import { useGoBack } from "@hooks/useGoBack";
 import { usePlants } from "@hooks/usePlants";
@@ -25,8 +17,8 @@ import { SavedPlant, getDisplayName, getMostRecentPhoto } from "@domain/plant";
 type SortBy = "name" | "added" | "photographed";
 
 const SORTS: Array<{ id: SortBy; label: string }> = [
-  { id: "name", label: "Name" },
   { id: "added", label: "Recently added" },
+  { id: "name", label: "Name" },
   { id: "photographed", label: "Recently photographed" },
 ];
 
@@ -37,9 +29,7 @@ export default function MyPlantsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("added");
 
-  // Refresh on every visit, quietly. The hook already loads on mount; this
-  // used to load a second time and flash a full-screen spinner every time
-  // you came back from a plant.
+  // Refresh quietly on every visit — no full-screen spinner flashing on return.
   useFocusEffect(
     useCallback(() => {
       void loadPlants({ silent: true });
@@ -61,16 +51,12 @@ export default function MyPlantsScreen() {
     const sorted = [...matched];
     switch (sortBy) {
       case "added":
-        // "Added" sorted by acquisitionDate, which nothing ever sets — so
-        // every comparison was between two fresh new Date() calls and the
-        // order came out effectively random.
+        // Not acquisitionDate, which nothing sets: that made the order random.
         sorted.sort((a, b) => b.identificationDate.getTime() - a.identificationDate.getTime());
         break;
       case "photographed":
         sorted.sort(
-          (a, b) =>
-            (getMostRecentPhoto(b)?.dateTaken.getTime() ?? 0) -
-            (getMostRecentPhoto(a)?.dateTaken.getTime() ?? 0)
+          (a, b) => (getMostRecentPhoto(b)?.dateTaken.getTime() ?? 0) - (getMostRecentPhoto(a)?.dateTaken.getTime() ?? 0)
         );
         break;
       default:
@@ -79,34 +65,28 @@ export default function MyPlantsScreen() {
     return sorted;
   }, [plants, searchQuery, sortBy]);
 
-  // Press and hold, rather than a red × on every photo: the grid is for
-  // looking at plants, and a delete button on each tile invited mis-taps.
+  // Press and hold rather than a delete button on every photo.
   const handleLongPress = (plant: SavedPlant) => {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 
-    Alert.alert(
-      `Delete ${getDisplayName(plant)}?`,
-      "This also removes its photos and watering history. It can't be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            removePlant(plant.id)
-              .then(() => cancelWateringReminder(plant.id))
-              .catch((err) => {
-                console.error("Failed to delete plant:", err);
-                Alert.alert("Couldn't delete", `${getDisplayName(plant)} is still in your collection.`);
-              });
-          },
+    Alert.alert(`Delete ${getDisplayName(plant)}?`, "This also removes its photos and watering history. It can't be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          removePlant(plant.id)
+            .then(() => cancelWateringReminder(plant.id))
+            .catch((err) => {
+              console.error("Failed to delete plant:", err);
+              Alert.alert("Couldn't delete", `${getDisplayName(plant)} is still in your collection.`);
+            });
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  const openPlant = (plant: SavedPlant) =>
-    router.push({ pathname: "/plant-detail", params: { id: plant.id } });
+  const openPlant = (plant: SavedPlant) => router.push({ pathname: "/plant-detail", params: { id: plant.id } });
 
   const header = (
     <ScreenHeader
@@ -122,111 +102,81 @@ export default function MyPlantsScreen() {
     return (
       <View style={styles.container}>
         {header}
-        <View style={styles.centred}>
-          <ActivityIndicator size="large" color={Colors.leaf} />
-        </View>
+        <ActivityIndicator size="large" color={Colors.brand} style={styles.loader} />
       </View>
     );
   }
 
-  if (error && plants.length === 0) {
+  if ((error && plants.length === 0) || plants.length === 0) {
+    const failed = Boolean(error);
     return (
       <View style={styles.container}>
         {header}
-        <View style={styles.centred}>
-          <Text style={styles.stateTitle}>Your plants didn't load</Text>
-          <Text style={styles.stateBody}>They're still saved on this phone. Try again.</Text>
-          <Button label="Try again" onPress={() => void loadPlants()} style={styles.stateButton} />
-        </View>
-      </View>
-    );
-  }
-
-  if (plants.length === 0) {
-    return (
-      <View style={styles.container}>
-        {header}
-        <View style={styles.centred}>
-          <View style={styles.emptyIcon}>
-            <Icon name="leaf.fill" size={30} />
-          </View>
-          <Text style={styles.stateTitle}>No plants yet</Text>
+        <View style={styles.stateCard}>
+          <IconTile icon={failed ? "exclamationmark.triangle.fill" : "leaf.fill"} color={failed ? Tiles.amber : Tiles.green} size={56} />
+          <Text style={styles.stateTitle}>{failed ? "Your plants didn't load" : "No plants yet"}</Text>
           <Text style={styles.stateBody}>
-            Identify a plant and save it, and it'll live here with its watering log and photos.
+            {failed
+              ? "They're still saved on this phone. Try again."
+              : "Identify a plant and save it, and it'll live here with its watering log and photos."}
           </Text>
-          <Button label="Identify a plant" onPress={() => router.push("/scan")} style={styles.stateButton} />
+          <Button
+            label={failed ? "Try again" : "Identify a plant"}
+            icon={failed ? undefined : "camera.fill"}
+            onPress={failed ? () => void loadPlants() : () => router.push("/scan")}
+            style={styles.stateButton}
+          />
         </View>
       </View>
     );
   }
 
-  // The lead plant gets the full width, the rest a two-column grid beneath
-  // it (DESIGN.md: "lead with a large hero card, then 2 columns").
+  // DESIGN.md: lead with one large plant, then two columns.
   const [lead, ...rest] = visible;
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={rest}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        columnWrapperStyle={styles.gridRow}
-        contentContainerStyle={styles.listContent}
-        keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <>
-            {header}
+    <FlatList
+      style={styles.container}
+      data={rest}
+      keyExtractor={(item) => item.id}
+      numColumns={2}
+      columnWrapperStyle={styles.gridRow}
+      contentContainerStyle={styles.listContent}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      ListHeaderComponent={
+        <>
+          {header}
 
-            <View style={styles.search}>
-              <Icon name="magnifyingglass" size={16} color={Colors.textSecondary} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search your plants"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholderTextColor={Colors.textDisabled}
-                clearButtonMode="while-editing"
-                returnKeyType="search"
-              />
-            </View>
-
-            <FlatList
-              horizontal
-              data={SORTS}
-              keyExtractor={(item) => item.id}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.sorts}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.sort, sortBy === item.id && styles.sortActive]}
-                  onPress={() => setSortBy(item.id)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: sortBy === item.id }}
-                >
-                  <Text style={[styles.sortText, sortBy === item.id && styles.sortTextActive]}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              )}
+          <View style={styles.search}>
+            <Icon name="magnifyingglass" size={16} color={Colors.textSecondary} weight="semibold" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search your plants"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor={Colors.textDisabled}
+              clearButtonMode="while-editing"
+              returnKeyType="search"
             />
+          </View>
 
-            {lead ? (
-              <PlantTile plant={lead} onPress={openPlant} onLongPress={handleLongPress} hero />
-            ) : (
-              <Text style={styles.noResults}>No plants match "{searchQuery.trim()}"</Text>
-            )}
-          </>
-        }
-        renderItem={({ item }) => (
-          <PlantTile plant={item} onPress={openPlant} onLongPress={handleLongPress} />
-        )}
-        ListFooterComponent={
-          visible.length > 0 ? (
-            <Text style={styles.hint}>Press and hold a plant to delete it.</Text>
-          ) : null
-        }
-      />
-    </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sorts}>
+            {SORTS.map((sort) => (
+              <Chip key={sort.id} label={sort.label} selected={sortBy === sort.id} onPress={() => setSortBy(sort.id)} />
+            ))}
+          </ScrollView>
+
+          {lead ? (
+            <PlantTile plant={lead} onPress={openPlant} onLongPress={handleLongPress} hero />
+          ) : (
+            <Text style={styles.noResults}>No plants match "{searchQuery.trim()}"</Text>
+          )}
+        </>
+      }
+      renderItem={({ item }) => <PlantTile plant={item} onPress={openPlant} onLongPress={handleLongPress} />}
+      ListFooterComponent={visible.length > 0 ? <Text style={styles.hint}>Press and hold a plant to delete it.</Text> : null}
+    />
   );
 }
 
@@ -242,13 +192,13 @@ function PlantTile({
   hero?: boolean;
 }) {
   const cover = getMostRecentPhoto(plant);
+  const secondary = plant.location || (plant.nickname ? plant.commonNames[0] ?? plant.scientificName : null);
 
   return (
-    <TouchableOpacity
-      style={[styles.tile, hero ? styles.tileHero : styles.tileGrid]}
+    <Pressable
+      style={({ pressed }) => [styles.tile, hero ? styles.tileHero : styles.tileGrid, pressed && styles.pressed]}
       onPress={() => onPress(plant)}
       onLongPress={() => onLongPress(plant)}
-      activeOpacity={0.9}
       accessibilityRole="button"
       accessibilityLabel={getDisplayName(plant)}
       accessibilityHint="Press and hold to delete"
@@ -256,72 +206,59 @@ function PlantTile({
       {cover ? (
         <Image source={{ uri: cover.imagePath }} style={StyleSheet.absoluteFill} resizeMode="cover" />
       ) : (
-        <View style={[StyleSheet.absoluteFill, styles.tilePlaceholder]}>
-          <Icon name="leaf.fill" size={hero ? 40 : 30} color={Colors.leafLight} />
-        </View>
+        <LinearGradient colors={[Colors.brandLit, Colors.brandDeep]} style={[StyleSheet.absoluteFill, styles.placeholder]}>
+          <Icon name="leaf.fill" size={hero ? 44 : 32} color="rgba(255,255,255,0.5)" />
+        </LinearGradient>
       )}
 
-      {/* A gradient fade for legibility over any photo, as DESIGN.md
-          specifies — not a grey band across the bottom. */}
-      <LinearGradient
-        colors={["transparent", "rgba(0, 0, 0, 0.62)"]}
-        style={styles.tileFade}
-        pointerEvents="none"
-      />
+      {/* A gradient fade for legibility over any photo (DESIGN.md). */}
+      <LinearGradient colors={["transparent", "rgba(0, 0, 0, 0.65)"]} style={styles.fade} pointerEvents="none" />
 
-      <View style={styles.tileLabel} pointerEvents="none">
-        <Text style={[styles.tileName, hero && styles.tileNameHero]} numberOfLines={1}>
+      <View style={styles.label} pointerEvents="none">
+        <Text style={[styles.name, hero && styles.nameHero]} numberOfLines={1}>
           {getDisplayName(plant)}
         </Text>
-        {plant.location ? (
-          <Text style={styles.tileMeta} numberOfLines={1}>
-            {plant.location}
-          </Text>
-        ) : plant.nickname ? (
-          <Text style={styles.tileMeta} numberOfLines={1}>
-            {plant.commonNames[0] ?? plant.scientificName}
+        {secondary ? (
+          <Text style={styles.meta} numberOfLines={1}>
+            {secondary}
           </Text>
         ) : null}
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.bg,
   },
-  centred: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: Spacing.loose,
+  loader: {
+    marginTop: Spacing.extra,
   },
-  emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: "rgba(45, 88, 66, 0.08)",
+  stateCard: {
+    margin: Spacing.default,
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: Spacing.loose,
+    padding: Spacing.loose,
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.card,
+    gap: Spacing.tight,
   },
   stateTitle: {
     ...Typography.headline,
     color: Colors.textPrimary,
     textAlign: "center",
+    marginTop: Spacing.tight,
   },
   stateBody: {
     ...Typography.body,
     lineHeight: 22,
     color: Colors.textSecondary,
     textAlign: "center",
-    marginTop: Spacing.tight,
   },
   stateButton: {
     alignSelf: "stretch",
-    marginTop: Spacing.spacious,
+    marginTop: Spacing.default,
   },
   listContent: {
     paddingBottom: Spacing.extra,
@@ -331,44 +268,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: Spacing.tight,
     marginHorizontal: Spacing.default,
-    paddingHorizontal: Spacing.default,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: Colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.glass,
+    paddingHorizontal: Spacing.default - 2,
+    height: 46,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.card,
   },
   searchInput: {
     flex: 1,
-    ...Typography.body,
+    ...Typography.bodyLarge,
     color: Colors.textPrimary,
     padding: 0,
   },
   sorts: {
     paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.default,
+    paddingVertical: Spacing.default - 4,
     gap: Spacing.tight,
-  },
-  sort: {
-    paddingHorizontal: Spacing.default,
-    minHeight: 34,
-    justifyContent: "center",
-    borderRadius: 17,
-    backgroundColor: Colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.glass,
-  },
-  sortActive: {
-    backgroundColor: Colors.leaf,
-    borderColor: Colors.leaf,
-  },
-  sortText: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-  },
-  sortTextActive: {
-    color: "#FFFFFF",
-    fontWeight: "600",
   },
   noResults: {
     ...Typography.body,
@@ -378,50 +292,54 @@ const styles = StyleSheet.create({
   },
   gridRow: {
     paddingHorizontal: Spacing.default,
-    gap: Spacing.default,
-    marginBottom: Spacing.default,
+    gap: Spacing.default - 4,
+    marginBottom: Spacing.default - 4,
   },
   tile: {
-    borderRadius: 16,
+    borderRadius: Radius.lg,
     overflow: "hidden",
-    backgroundColor: Colors.glass,
+    backgroundColor: Colors.separator,
     justifyContent: "flex-end",
+    ...Shadow.card,
   },
   tileHero: {
-    height: 220,
+    height: 240,
     marginHorizontal: Spacing.default,
-    marginBottom: Spacing.default,
+    marginBottom: Spacing.default - 4,
   },
   tileGrid: {
     flex: 1,
     aspectRatio: 0.8,
   },
-  tilePlaceholder: {
+  pressed: {
+    transform: [{ scale: 0.98 }],
+  },
+  placeholder: {
     alignItems: "center",
     justifyContent: "center",
   },
-  tileFade: {
+  fade: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
     height: "55%",
   },
-  tileLabel: {
-    padding: Spacing.default,
+  label: {
+    padding: Spacing.default - 2,
   },
-  tileName: {
+  name: {
     ...Typography.subheadline,
     color: "#FFFFFF",
   },
-  tileNameHero: {
-    ...Typography.headline,
+  nameHero: {
+    ...Typography.display,
     color: "#FFFFFF",
   },
-  tileMeta: {
+  meta: {
     ...Typography.caption1,
-    color: "rgba(255, 255, 255, 0.82)",
-    marginTop: 2,
+    color: "rgba(255, 255, 255, 0.85)",
+    marginTop: 1,
   },
   hint: {
     ...Typography.caption1,

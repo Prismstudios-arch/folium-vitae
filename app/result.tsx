@@ -1,22 +1,13 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  Image,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Share,
-} from "react-native";
+import { View, Text, StyleSheet, Image, ScrollView, Pressable, ActivityIndicator, Alert, Share } from "react-native";
 import { useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { Colors, Spacing, Typography } from "@constants/theme";
-import { Button, SecondaryButton } from "@components/Button";
-import { ConfidenceBadge } from "@components/Card";
+import { Colors, Radius, Shadow, Spacing, Tiles, Typography } from "@constants/theme";
+import { Button } from "@components/Button";
 import { CareCard } from "@components/CareCard";
+import { ConfidenceMeter } from "@components/ConfidenceMeter";
 import { Icon } from "@components/Icon";
+import { IconTile } from "@components/ListGroup";
 import { ScreenHeader, HeaderIconButton } from "@components/ScreenHeader";
 import { useIdentification } from "@hooks/useIdentification";
 import { useGoBack } from "@hooks/useGoBack";
@@ -136,9 +127,7 @@ export default function ResultScreen() {
           ? "Probably"
           : "Sorrel's best guess:";
 
-    await Share.share({
-      message: `${hedge} ${displayName(selected)} (${selected.scientificName})`,
-    });
+    await Share.share({ message: `${hedge} ${displayName(selected)} (${selected.scientificName})` });
   };
 
   const header = (
@@ -153,192 +142,229 @@ export default function ResultScreen() {
   );
 
   // The held photo lives in memory only. After the app has been closed, or
-  // several scans later, it is gone — this screen used to render blank.
+  // several scans later, it's gone — this screen used to render blank.
   if (!capture && !result) {
     return (
       <View style={styles.container}>
         {header}
         <View style={styles.centred}>
-          <Icon name="photo.on.rectangle" size={34} color={Colors.textSecondary} />
-          <Text style={styles.stateTitle}>That photo isn't available any more</Text>
-          <Text style={styles.stateBody}>Take it again and we'll have another look.</Text>
-          <Button label="Open the camera" onPress={() => router.replace("/scan")} style={styles.stateButton} />
+          <View style={styles.stateCard}>
+            <IconTile icon="photo.on.rectangle" color={Tiles.grey} size={52} />
+            <Text style={styles.stateTitle}>That photo isn't available any more</Text>
+            <Text style={styles.stateBody}>Take it again and we'll have another look.</Text>
+            <Button label="Open the camera" icon="camera.fill" onPress={() => router.replace("/scan")} style={styles.stateButton} />
+          </View>
         </View>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       {header}
 
-      {capture ? (
-        <Image source={{ uri: capture.uri }} style={styles.photo} resizeMode="cover" />
-      ) : null}
+      {/* DESIGN.md: the photo is the hero. Full width, no card. */}
+      {capture ? <Image source={{ uri: capture.uri }} style={styles.photo} resizeMode="cover" /> : null}
 
-      <View style={styles.content}>
+      <View style={[styles.sheet, !capture && styles.sheetNoPhoto]}>
         {identifying && !result ? (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={Colors.leaf} />
-            <Text style={styles.loadingTitle}>Identifying your plant…</Text>
-            <Text style={styles.loadingBody}>This usually takes a few seconds.</Text>
+          <View style={styles.card}>
+            <ActivityIndicator size="large" color={Colors.brand} />
+            <Text style={styles.cardTitle}>Identifying your plant…</Text>
+            <Text style={styles.cardBody}>This usually takes a few seconds.</Text>
           </View>
         ) : error && error.code === ErrorCode.DailyLimit ? (
-          // No retry can work before the reset, so this isn't a "Try again"
-          // loop — and it's the one moment Premium is genuinely relevant.
-          <>
-            <Text style={styles.title}>That's today's identifications</Text>
-            <Text style={styles.body}>{error.message}</Text>
-            <Text style={styles.body}>
-              Premium removes the daily limit. Your collection, care notes and reminders keep
-              working either way.
+          // No retry can work before the reset — and this is the one moment
+          // Premium is genuinely relevant.
+          <View style={styles.card}>
+            <IconTile icon="hourglass" color={Tiles.amber} size={52} />
+            <Text style={styles.cardTitle}>That's today's identifications</Text>
+            <Text style={styles.cardBody}>{error.message}</Text>
+            <Text style={styles.cardBody}>
+              Premium removes the daily limit. Your collection, care notes and reminders keep working either way.
             </Text>
-            <Button label="See Premium" onPress={() => router.push("/subscription")} style={styles.gapTop} />
-            <SecondaryButton label="Back" onPress={goBack} style={styles.gapTopSmall} />
-          </>
+            <Button label="See Premium" icon="crown.fill" onPress={() => router.push("/subscription")} style={styles.cardButton} />
+            <Button label="Back" variant="tertiary" onPress={goBack} style={styles.cardButtonTight} />
+          </View>
         ) : error ? (
-          <>
-            <Text style={styles.title}>Couldn't identify that one</Text>
-            <Text style={styles.body}>{error.message}</Text>
-            {error.retryable ? (
-              <Text style={styles.caption}>This is usually temporary.</Text>
-            ) : null}
+          <View style={styles.card}>
+            <IconTile icon="exclamationmark.triangle.fill" color={Tiles.red} size={52} />
+            <Text style={styles.cardTitle}>Couldn't identify that one</Text>
+            <Text style={styles.cardBody}>{error.message}</Text>
+            {error.retryable ? <Text style={styles.cardFine}>This is usually temporary.</Text> : null}
             {/* A retry only where retrying could plausibly work. */}
             <Button
               label={error.retryable ? "Try again" : "Take another photo"}
+              icon="camera.fill"
               onPress={goBack}
-              style={styles.gapTop}
+              style={styles.cardButton}
             />
-          </>
+          </View>
         ) : selected && selectedConfidence && topConfidence ? (
           <>
-            {notSure ? (
-              // DESIGN.md: "Not sure" is a designed screen, not a failure —
-              // no headline answer and no badge, just ranked guesses.
-              <>
-                <Text style={styles.title}>We're not sure about this one</Text>
-                <Text style={styles.body}>
-                  These are our best guesses. Compare them with your plant, or try a closer photo of
-                  a single leaf.
-                </Text>
-                <View style={styles.list}>
-                  {candidates.map((candidate, index) => (
-                    <CandidateRow
-                      key={candidate.id}
-                      candidate={candidate}
-                      rank={index + 1}
-                      selected={index === selectedIndex}
-                      onPress={() => setSelectedIndex(index)}
-                    />
-                  ))}
-                </View>
-              </>
-            ) : (
-              <>
-                {selectedIndex === 0 ? (
-                  <ConfidenceBadge band={topConfidence.band as "confident" | "probably" | "notSure"} />
-                ) : null}
-                <Text style={styles.name}>{displayName(selected)}</Text>
-                {hasCommonName(selected) ? (
-                  <Text style={styles.scientific}>{selected.scientificName}</Text>
-                ) : null}
-                {selected.taxonomy.family ? (
-                  <Text style={styles.caption}>{selected.taxonomy.family}</Text>
-                ) : null}
+            <View style={styles.summary}>
+              {notSure ? (
+                // DESIGN.md: "Not sure" is a designed screen, not a failure —
+                // no headline answer, just ranked guesses.
+                <>
+                  <IconTile icon="questionmark" color={Tiles.amber} size={40} />
+                  <Text style={styles.summaryTitle}>We're not sure about this one</Text>
+                  <Text style={styles.summaryBody}>
+                    These are our best guesses. Compare them with your plant, or try a closer photo of a single leaf.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  {selected.taxonomy.family ? <Text style={styles.overline}>{selected.taxonomy.family}</Text> : null}
+                  <Text style={styles.name}>{displayName(selected)}</Text>
+                  {hasCommonName(selected) ? <Text style={styles.scientific}>{selected.scientificName}</Text> : null}
+                  <View style={styles.meter}>
+                    <ConfidenceMeter band={selectedConfidence.band} score={selected.rawScore} />
+                  </View>
+                  <Text style={styles.summaryBody}>
+                    {selectedIndex === 0
+                      ? explainBand(topConfidence.band)
+                      : "You picked one of our other possibilities, so it's saved as your choice."}
+                  </Text>
+                </>
+              )}
+            </View>
 
-                <Text style={styles.explanation}>
-                  {selectedIndex === 0
-                    ? explainBand(topConfidence.band)
-                    : `You've picked one of our other possibilities. We gave it ${percent(selected.rawScore)}.`}
-                </Text>
-              </>
-            )}
+            {notSure ? (
+              <Candidates
+                title="Best guesses"
+                candidates={candidates}
+                selectedIndex={selectedIndex}
+                onSelect={setSelectedIndex}
+              />
+            ) : null}
 
             {warnAboutToxicity && toxicityText ? (
               <View style={styles.toxicity}>
-                <View style={styles.toxicityHeader}>
-                  <Icon name="exclamationmark.triangle.fill" size={18} color={Colors.toxicity} />
+                <IconTile icon="exclamationmark.triangle.fill" color={Tiles.orange} size={36} />
+                <View style={styles.toxicityText}>
                   <Text style={styles.toxicityTitle}>{toxicityText}</Text>
+                  {care?.guide.toxicity.notes ? <Text style={styles.toxicityBody}>{care.guide.toxicity.notes}</Text> : null}
+                  <Text style={styles.toxicityFine}>
+                    If a pet or child has eaten this, contact a vet or your poison service. Don't wait on an app.
+                  </Text>
                 </View>
-                {care?.guide.toxicity.notes ? (
-                  <Text style={styles.toxicityNotes}>{care.guide.toxicity.notes}</Text>
-                ) : null}
-                <Text style={styles.toxicityDisclaimer}>
-                  If a pet or child has eaten this, contact a vet or your poison service. Don't wait on
-                  an app.
-                </Text>
               </View>
             ) : null}
 
+            <Text style={styles.sectionTitle}>How to care for it</Text>
             {care ? (
-              <View style={styles.section}>
-                {care.matchedAt === "genus" ? (
+              <>
+                {care.matchedAt === "genus" || care.unreviewed ? (
                   <Text style={styles.caveat}>
-                    These notes cover the {care.guide.scientificName.split(" ")[0]} genus in general,
-                    not this exact species.
+                    {[
+                      care.matchedAt === "genus"
+                        ? `These notes cover the ${care.guide.scientificName.split(" ")[0]} genus in general, not this exact species.`
+                        : null,
+                      care.unreviewed ? "Not yet reviewed by a horticulturist." : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                   </Text>
                 ) : null}
-                {care.unreviewed ? (
-                  <Text style={styles.caveat}>Not yet reviewed by a horticulturist.</Text>
-                ) : null}
-                <CareCard guide={care.guide} compactMode={true} units={units} />
-              </View>
+                <CareCard guide={care.guide} units={units} />
+              </>
             ) : (
-              <Text style={[styles.caption, styles.section]}>
-                We don't have care notes for this plant yet. We'd rather show nothing than guess.
-              </Text>
+              <View style={styles.noCare}>
+                <IconTile icon="book.closed.fill" color={Tiles.grey} size={36} />
+                <View style={styles.noCareText}>
+                  <Text style={styles.noCareTitle}>No care notes for this plant yet</Text>
+                  <Text style={styles.noCareBody}>We'd rather show nothing than guess.</Text>
+                </View>
+              </View>
             )}
 
             {!notSure && candidates.length > 1 ? (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Other possibilities</Text>
-                <Text style={styles.caption}>Tap one if it matches your plant better.</Text>
-                <View style={styles.list}>
-                  {candidates.map((candidate, index) => (
-                    <CandidateRow
-                      key={candidate.id}
-                      candidate={candidate}
-                      rank={index + 1}
-                      selected={index === selectedIndex}
-                      onPress={() => setSelectedIndex(index)}
-                    />
-                  ))}
-                </View>
-              </View>
+              <Candidates
+                title="Other possibilities"
+                hint="Tap one if it matches your plant better."
+                candidates={candidates}
+                selectedIndex={selectedIndex}
+                onSelect={setSelectedIndex}
+              />
             ) : null}
 
             <View style={styles.actions}>
               {savedId ? (
                 <Button
                   label="View in My Plants"
+                  icon="checkmark.circle.fill"
+                  variant="secondary"
                   onPress={() => router.push({ pathname: "/plant-detail", params: { id: savedId } })}
                 />
               ) : (
                 <Button
                   label={notSure ? `Save "${displayName(selected)}"` : "Save to My Plants"}
+                  icon="plus"
                   onPress={handleSave}
                   loading={saving}
                 />
               )}
-
-              <TouchableOpacity onPress={goBack} style={styles.textAction} accessibilityRole="button">
-                <Text style={styles.textActionLabel}>Not right? Take another photo</Text>
-              </TouchableOpacity>
+              <Button label="Not right? Take another photo" variant="tertiary" onPress={goBack} style={styles.cardButtonTight} />
             </View>
           </>
         ) : null}
 
-        {/* dismissTo, not push: pushing "/" stacked another Home on top of the
-            camera and the result, so Back from Home went somewhere odd. */}
-        <TouchableOpacity
-          onPress={() => router.dismissTo("/")}
-          style={styles.textAction}
-          accessibilityRole="button"
-        >
-          <Text style={styles.textActionLabel}>Back to Home</Text>
-        </TouchableOpacity>
+        {/* dismissTo, not push: pushing "/" stacked another Home on top. */}
+        <Pressable onPress={() => router.dismissTo("/")} style={styles.homeLink} accessibilityRole="button">
+          <Text style={styles.homeLinkText}>Back to Home</Text>
+        </Pressable>
       </View>
     </ScrollView>
+  );
+}
+
+function Candidates({
+  title,
+  hint,
+  candidates,
+  selectedIndex,
+  onSelect,
+}: {
+  title: string;
+  hint?: string;
+  candidates: Species[];
+  selectedIndex: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <View>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {hint ? <Text style={styles.caveat}>{hint}</Text> : null}
+      <View style={styles.candidates}>
+        {candidates.map((candidate, index) => {
+          const selected = index === selectedIndex;
+          return (
+            <Pressable
+              key={candidate.id}
+              onPress={() => onSelect(index)}
+              style={({ pressed }) => [styles.candidate, selected && styles.candidateSelected, pressed && styles.pressed]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: selected }}
+            >
+              <View style={[styles.rank, selected && styles.rankSelected]}>
+                <Text style={[styles.rankText, selected && styles.rankTextSelected]}>{index + 1}</Text>
+              </View>
+              <View style={styles.candidateText}>
+                <Text style={styles.candidateName}>{displayName(candidate)}</Text>
+                {hasCommonName(candidate) ? <Text style={styles.candidateScientific}>{candidate.scientificName}</Text> : null}
+              </View>
+              <Text style={styles.candidateScore}>{Math.round(candidate.rawScore * 100)}%</Text>
+              <Icon
+                name={selected ? "checkmark.circle.fill" : "circle"}
+                size={22}
+                color={selected ? Colors.brand : Colors.textDisabled}
+              />
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -349,10 +375,6 @@ function hasCommonName(species: Species): boolean {
 
 function displayName(species: Species): string {
   return hasCommonName(species) ? species.commonNames[0] : species.scientificName;
-}
-
-function percent(score: number): string {
-  return `${Math.round(score * 100)}%`;
 }
 
 function explainBand(band: ConfidenceBand): string {
@@ -366,61 +388,31 @@ function explainBand(band: ConfidenceBand): string {
   }
 }
 
-function CandidateRow({
-  candidate,
-  rank,
-  selected,
-  onPress,
-}: {
-  candidate: Species;
-  rank: number;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.candidate, selected && styles.candidateSelected]}
-      onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
-    >
-      <Text style={styles.candidateRank}>{rank}</Text>
-      <View style={styles.candidateText}>
-        <Text style={styles.candidateName}>{displayName(candidate)}</Text>
-        {hasCommonName(candidate) ? (
-          <Text style={styles.candidateScientific}>{candidate.scientificName}</Text>
-        ) : null}
-      </View>
-      <Text style={styles.candidateScore}>{percent(candidate.rawScore)}</Text>
-      <Icon
-        name={selected ? "checkmark.circle.fill" : "circle"}
-        size={22}
-        color={selected ? Colors.leaf : Colors.textDisabled}
-      />
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.bg,
   },
   scrollContent: {
     paddingBottom: Spacing.extra,
   },
   centred: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: Spacing.loose,
+    padding: Spacing.default,
+  },
+  stateCard: {
+    alignItems: "center",
+    padding: Spacing.loose,
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.card,
     gap: Spacing.tight,
   },
   stateTitle: {
     ...Typography.headline,
     color: Colors.textPrimary,
     textAlign: "center",
-    marginTop: Spacing.default,
+    marginTop: Spacing.tight,
   },
   stateBody: {
     ...Typography.body,
@@ -429,139 +421,191 @@ const styles = StyleSheet.create({
   },
   stateButton: {
     alignSelf: "stretch",
-    marginTop: Spacing.loose,
-  },
-  // Full width, no card, no rounded corners — DESIGN.md: the photo is the hero.
-  photo: {
-    width: "100%",
-    height: 320,
-    backgroundColor: Colors.glass,
-  },
-  content: {
-    padding: Spacing.default,
-    paddingTop: Spacing.loose,
-  },
-  loading: {
-    alignItems: "center",
-    paddingVertical: Spacing.spacious,
-    gap: Spacing.tight,
-  },
-  loadingTitle: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
     marginTop: Spacing.default,
   },
-  loadingBody: {
+  photo: {
+    width: "100%",
+    height: 360,
+    backgroundColor: Colors.separator,
+  },
+  sheet: {
+    marginTop: -28,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    backgroundColor: Colors.bg,
+    paddingHorizontal: Spacing.default,
+    paddingTop: Spacing.default,
+  },
+  sheetNoPhoto: {
+    marginTop: 0,
+  },
+  card: {
+    alignItems: "center",
+    padding: Spacing.loose,
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.card,
+    gap: Spacing.tight,
+    ...Shadow.card,
+  },
+  cardTitle: {
+    ...Typography.headline,
+    color: Colors.textPrimary,
+    textAlign: "center",
+    marginTop: Spacing.tight,
+  },
+  cardBody: {
+    ...Typography.body,
+    lineHeight: 22,
+    color: Colors.textSecondary,
+    textAlign: "center",
+  },
+  cardFine: {
     ...Typography.caption1,
     color: Colors.textSecondary,
   },
-  title: {
-    ...Typography.display,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.tight,
+  cardButton: {
+    alignSelf: "stretch",
+    marginTop: Spacing.default,
+  },
+  cardButtonTight: {
+    alignSelf: "stretch",
+    marginTop: Spacing.compact,
+  },
+  summary: {
+    padding: Spacing.loose,
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.card,
+    ...Shadow.card,
+  },
+  overline: {
+    ...Typography.overline,
+    color: Colors.brand,
   },
   name: {
     ...Typography.displayLarge,
-    letterSpacing: 0,
-    color: Colors.leaf,
-    marginTop: Spacing.default,
+    color: Colors.textPrimary,
+    marginTop: 2,
   },
   scientific: {
     ...Typography.bodyLarge,
     color: Colors.textSecondary,
     fontStyle: "italic",
-    marginTop: Spacing.compact,
+    marginTop: 2,
   },
-  body: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.tight,
+  meter: {
+    marginTop: Spacing.loose,
   },
-  caption: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: Spacing.compact,
-  },
-  explanation: {
-    ...Typography.body,
-    lineHeight: 22,
+  summaryTitle: {
+    ...Typography.display,
     color: Colors.textPrimary,
     marginTop: Spacing.default,
   },
-  gapTop: {
-    marginTop: Spacing.loose,
-  },
-  gapTopSmall: {
-    marginTop: Spacing.tight,
-  },
-  toxicity: {
-    marginTop: Spacing.loose,
-    padding: Spacing.default,
-    borderRadius: 12,
-    backgroundColor: "rgba(160, 82, 45, 0.08)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(160, 82, 45, 0.35)",
-  },
-  toxicityHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.tight,
-  },
-  toxicityTitle: {
-    ...Typography.subheadline,
-    color: Colors.toxicity,
-    flex: 1,
-  },
-  toxicityNotes: {
+  summaryBody: {
     ...Typography.body,
+    lineHeight: 22,
     color: Colors.textSecondary,
-    marginTop: Spacing.tight,
-  },
-  toxicityDisclaimer: {
-    ...Typography.caption2,
-    color: Colors.textSecondary,
-    marginTop: Spacing.tight,
-  },
-  section: {
-    marginTop: Spacing.loose,
+    marginTop: Spacing.default - 4,
   },
   sectionTitle: {
-    ...Typography.subheadline,
+    ...Typography.headline,
     color: Colors.textPrimary,
+    marginTop: Spacing.spacious,
+    marginBottom: Spacing.default - 4,
   },
   caveat: {
     ...Typography.caption1,
     color: Colors.textSecondary,
-    marginBottom: Spacing.tight,
+    marginTop: -4,
+    marginBottom: Spacing.default - 4,
   },
-  list: {
+  toxicity: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Spacing.default - 4,
     marginTop: Spacing.default,
+    padding: Spacing.default,
+    borderRadius: Radius.lg,
+    backgroundColor: "#FDF0E8",
+  },
+  toxicityText: {
+    flex: 1,
+  },
+  toxicityTitle: {
+    ...Typography.subheadline,
+    color: Colors.toxicity,
+  },
+  toxicityBody: {
+    ...Typography.body,
+    color: Colors.textPrimary,
+    marginTop: Spacing.compact,
+  },
+  toxicityFine: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    marginTop: Spacing.tight,
+  },
+  noCare: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.default - 4,
+    padding: Spacing.default,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+  },
+  noCareText: {
+    flex: 1,
+  },
+  noCareTitle: {
+    ...Typography.subheadline,
+    color: Colors.textPrimary,
+  },
+  noCareBody: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  candidates: {
     gap: Spacing.tight,
   },
   candidate: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.default,
-    minHeight: 60,
+    gap: Spacing.default - 4,
+    minHeight: 64,
     paddingHorizontal: Spacing.default,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: Colors.glass,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+    borderWidth: 2,
+    borderColor: "transparent",
   },
   candidateSelected: {
-    borderColor: Colors.leaf,
-    backgroundColor: "rgba(45, 88, 66, 0.05)",
+    borderColor: Colors.brand,
   },
-  candidateRank: {
+  pressed: {
+    opacity: 0.85,
+  },
+  rank: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.bg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rankSelected: {
+    backgroundColor: Colors.brandTint,
+  },
+  rankText: {
     ...Typography.caption1,
+    fontWeight: "700",
     color: Colors.textSecondary,
-    width: 14,
-    fontVariant: ["tabular-nums"],
+  },
+  rankTextSelected: {
+    color: Colors.brandDark,
   },
   candidateText: {
     flex: 1,
-    paddingVertical: Spacing.tight,
+    paddingVertical: Spacing.tight + 2,
   },
   candidateName: {
     ...Typography.subheadline,
@@ -571,24 +615,25 @@ const styles = StyleSheet.create({
     ...Typography.caption1,
     color: Colors.textSecondary,
     fontStyle: "italic",
-    marginTop: 2,
+    marginTop: 1,
   },
   candidateScore: {
     ...Typography.caption1,
+    fontWeight: "600",
     color: Colors.textSecondary,
     fontVariant: ["tabular-nums"],
   },
   actions: {
     marginTop: Spacing.spacious,
   },
-  textAction: {
+  homeLink: {
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: Spacing.tight,
+    marginTop: Spacing.default,
   },
-  textActionLabel: {
-    ...Typography.bodyLarge,
-    color: Colors.leaf,
+  homeLinkText: {
+    ...Typography.controlSmall,
+    color: Colors.textSecondary,
   },
 });

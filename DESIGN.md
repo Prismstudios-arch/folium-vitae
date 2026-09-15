@@ -23,7 +23,15 @@ Instead:
 
 ## Color Tokens
 
-### Primary Palette (4 colors)
+> **Version 2 (September 2026) supersedes the palette below.** On device, the
+> cream grounds and soil-brown text read as dated and low-contrast, and testers
+> called the app "beta". `src/constants/theme.ts` is now the source of truth:
+> the brand green comes from the app icon's emerald (`brand #1E7A52`,
+> `brandDeep #062A1E`), grounds are light grey (`bg #F3F5F4`) with white cards,
+> and text is near-black (`#0F1A15`) with a cool grey secondary (`#5C6863`).
+> Layout principles, motion, haptics and honesty rules below still apply.
+
+### Primary Palette (4 colors) — version 1, retired
 
 | Token | Hex | RGB | Use | Contrast Notes |
 |---|---|---|---|---|

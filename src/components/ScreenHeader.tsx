@@ -1,6 +1,7 @@
-import { View, Text, StyleSheet, TouchableOpacity, StyleProp, ViewStyle } from "react-native";
+import { View, Text, StyleSheet, Pressable, StyleProp, ViewStyle } from "react-native";
 import { ReactNode } from "react";
-import { Colors, Spacing, Typography } from "@constants/theme";
+import type { SFSymbol } from "expo-symbols";
+import { Colors, Radius, Spacing, Typography } from "@constants/theme";
 import { Icon } from "./Icon";
 
 interface ScreenHeaderProps {
@@ -15,11 +16,11 @@ interface ScreenHeaderProps {
 }
 
 /**
- * The header every pushed screen uses.
+ * The header every pushed screen uses: back chevron and label in the brand
+ * colour, then an iOS large title.
  *
- * Each screen had built its own: "← Back" in one, a bare "←" in another, a
- * back link at the bottom of Settings, and none at all on My Plants. One
- * component means one tap target in one place, sized to Apple's 44pt minimum.
+ * One component means one tap target in one place, sized to Apple's 44pt
+ * minimum, instead of every screen improvising its own.
  */
 export function ScreenHeader({
   onBack,
@@ -33,16 +34,16 @@ export function ScreenHeader({
     <View style={[styles.container, style]}>
       <View style={styles.row}>
         {onBack ? (
-          <TouchableOpacity
+          <Pressable
             onPress={onBack}
-            style={styles.back}
+            style={({ pressed }) => [styles.back, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={backLabel}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Icon name="chevron.left" size={18} weight="semibold" />
+            <Icon name="chevron.left" size={19} color={Colors.brand} weight="semibold" />
             <Text style={styles.backLabel}>{backLabel}</Text>
-          </TouchableOpacity>
+          </Pressable>
         ) : (
           <View style={styles.back} />
         )}
@@ -59,33 +60,39 @@ export function ScreenHeader({
   );
 }
 
-/** A round icon button for the right-hand slot. */
+/** A round icon button for the right-hand slot, or over photos. */
 export function HeaderIconButton({
   icon,
   label,
   onPress,
+  onDark = false,
 }: {
-  icon: Parameters<typeof Icon>[0]["name"];
+  icon: SFSymbol;
   label: string;
   onPress: () => void;
+  onDark?: boolean;
 }) {
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
-      style={styles.iconButton}
+      style={({ pressed }) => [
+        styles.iconButton,
+        onDark ? styles.iconButtonDark : styles.iconButtonLight,
+        pressed && styles.pressed,
+      ]}
       accessibilityRole="button"
       accessibilityLabel={label}
       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
     >
-      <Icon name={icon} size={20} />
-    </TouchableOpacity>
+      <Icon name={icon} size={18} color={onDark ? "#FFFFFF" : Colors.textPrimary} weight="semibold" />
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.tight,
+    paddingTop: Spacing.compact,
     paddingBottom: Spacing.default,
   },
   row: {
@@ -97,30 +104,41 @@ const styles = StyleSheet.create({
   back: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.compact,
+    gap: 2,
     minHeight: 44,
     minWidth: 44,
+    marginLeft: -6,
   },
   backLabel: {
     ...Typography.bodyLarge,
-    color: Colors.leaf,
+    color: Colors.brand,
+  },
+  pressed: {
+    opacity: 0.55,
   },
   title: {
-    ...Typography.display,
+    ...Typography.displayLarge,
     color: Colors.textPrimary,
-    marginTop: Spacing.tight,
-  },
-  subtitle: {
-    ...Typography.body,
-    color: Colors.textSecondary,
     marginTop: Spacing.compact,
   },
+  subtitle: {
+    ...Typography.bodyLarge,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
   iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.surface,
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
     alignItems: "center",
     justifyContent: "center",
+  },
+  iconButtonLight: {
+    backgroundColor: Colors.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.separator,
+  },
+  iconButtonDark: {
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
   },
 });

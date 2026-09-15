@@ -1,31 +1,18 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  TextInput,
-  Linking,
-} from "react-native";
-import { useState, useEffect, ReactNode } from "react";
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, ActivityIndicator, TextInput, Linking } from "react-native";
+import { useState, useEffect } from "react";
 import { useLocalSearchParams } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, Spacing, Typography } from "@constants/theme";
+import { Colors, Radius, Spacing, Tiles, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
 import { Icon } from "@components/Icon";
+import { IconTile, ListGroup, ListRow } from "@components/ListGroup";
 import { ScreenHeader } from "@components/ScreenHeader";
 import { WaterLog, WaterAmount } from "@domain/plant";
 import { fetchWaterLogs, addWaterLog, deleteWaterLog, fetchPlant } from "@services/database";
 import { lookupCareGuide, CareLookupResult } from "@services/careDatabase";
 import { getUserPreferences } from "@services/userPreferences";
-import {
-  refreshWateringReminder,
-  getReminderPermission,
-  requestReminderPermission,
-} from "@services/wateringReminders";
+import { refreshWateringReminder, getReminderPermission, requestReminderPermission } from "@services/wateringReminders";
 import {
   summariseWatering,
   describeWaterFrequency,
@@ -33,22 +20,27 @@ import {
   currentSeason,
   describeSeasonForWatering,
   Hemisphere,
+  Season,
 } from "@services/wateringInsights";
 import { useGoBack } from "@hooks/useGoBack";
 
-/** Emoji (💧💦🌊) made these look like a chat app. One symbol, filling up. */
+/** One symbol, filling up — rather than 💧💦🌊. */
 const AMOUNTS: Array<{ amount: WaterAmount; label: string; icon: SFSymbol }> = [
   { amount: WaterAmount.Light, label: "Light", icon: "drop" },
   { amount: WaterAmount.Moderate, label: "Moderate", icon: "drop.halffull" },
   { amount: WaterAmount.Heavy, label: "Heavy", icon: "drop.fill" },
 ];
 
+const SEASON_ICON: Record<Season, SFSymbol> = {
+  spring: "leaf.fill",
+  summer: "sun.max.fill",
+  autumn: "wind",
+  winter: "snowflake",
+};
+
 export default function WaterLogScreen() {
   const goBack = useGoBack("/my-plants");
-  const { plantId, plantName } = useLocalSearchParams<{
-    plantId: string;
-    plantName?: string;
-  }>();
+  const { plantId, plantName } = useLocalSearchParams<{ plantId: string; plantName?: string }>();
 
   const [logs, setLogs] = useState<WaterLog[]>([]);
   const [care, setCare] = useState<CareLookupResult | null>(null);
@@ -75,11 +67,7 @@ export default function WaterLogScreen() {
 
     setLoading(true);
     try {
-      const [history, plant, prefs] = await Promise.all([
-        fetchWaterLogs(plantId),
-        fetchPlant(plantId),
-        getUserPreferences(),
-      ]);
+      const [history, plant, prefs] = await Promise.all([fetchWaterLogs(plantId), fetchPlant(plantId), getUserPreferences()]);
       setLogs(history);
       setCare(plant ? lookupCareGuide(plant.scientificName) : null);
       setHemisphere(prefs.hemisphere);
@@ -94,10 +82,7 @@ export default function WaterLogScreen() {
     void syncReminder();
   };
 
-  /**
-   * Reminders follow the history, so any change to it reschedules. Best
-   * effort: a reminder failing to schedule must never cost the log itself.
-   */
+  /** Reminders follow the history. Best effort: never at the cost of the log. */
   const syncReminder = async () => {
     if (!plantId) return;
 
@@ -123,12 +108,8 @@ export default function WaterLogScreen() {
         notes: notes.trim() || undefined,
       });
 
-      // Insert in date order rather than at the top — the user can backdate
-      // an entry, and prepending would put it above more recent waterings.
-      setLogs((current) =>
-        [saved, ...current].sort((a, b) => b.date.getTime() - a.date.getTime())
-      );
-
+      // Date order, not prepended: entries can be backdated.
+      setLogs((current) => [saved, ...current].sort((a, b) => b.date.getTime() - a.date.getTime()));
       setSelectedDate(new Date());
       setSelectedAmount(WaterAmount.Moderate);
       setNotes("");
@@ -151,8 +132,7 @@ export default function WaterLogScreen() {
         style: "destructive",
         onPress: async () => {
           const previous = logs;
-          // Remove it immediately, then put it back if the delete fails —
-          // the list should never show a row that is already gone.
+          // Remove immediately; restore if the delete fails.
           setLogs(logs.filter((l) => l.id !== logId));
 
           try {
@@ -176,389 +156,261 @@ export default function WaterLogScreen() {
     if (result.granted) void syncReminder();
   };
 
-  const header = (
-    <ScreenHeader onBack={goBack} title="Watering log" subtitle={plantName || undefined} />
-  );
+  const header = <ScreenHeader onBack={goBack} title="Watering" subtitle={plantName || undefined} />;
 
   if (loading) {
     return (
       <View style={styles.container}>
         {header}
-        <ActivityIndicator size="large" color={Colors.leaf} style={styles.loader} />
+        <ActivityIndicator size="large" color={Colors.brand} style={styles.loader} />
       </View>
     );
   }
 
-  // Reached without a plant, the form would render and every tap would
-  // silently do nothing. Say so instead.
+  // Reached without a plant, every tap would silently do nothing. Say so.
   if (!plantId) {
     return (
       <View style={styles.container}>
         {header}
-        <View style={styles.emptyHistory}>
-          <Text style={styles.emptyText}>No plant selected</Text>
-          <Text style={styles.emptySubtext}>Open a plant from your collection to log watering.</Text>
+        <View style={styles.stateCard}>
+          <IconTile icon="drop.fill" color={Tiles.grey} size={52} />
+          <Text style={styles.stateTitle}>No plant selected</Text>
+          <Text style={styles.stateBody}>Open a plant from your collection to log watering.</Text>
         </View>
       </View>
     );
   }
 
   const rhythm = summariseWatering(logs);
+  const season = currentSeason(hemisphere);
 
-  // Reminders default to on, but the iOS permission is asked for here — once
-  // there's enough history for a reminder to be useful — rather than cold at
-  // launch, where most people refuse.
-  let reminder: ReactNode = null;
-  if (remindersOn && reminderChecked && permission) {
+  // Reminders default to on; the iOS permission is asked for here, once
+  // there's enough history for a reminder to mean something.
+  const reminderRow = (() => {
+    if (!remindersOn || !reminderChecked || !permission) return null;
+
     if (!permission.granted) {
-      if (rhythm && rhythm.medianDays >= 1) {
-        reminder = permission.canAskAgain ? (
-          <TouchableOpacity onPress={handleAllowReminders} style={styles.reminderAction} accessibilityRole="button">
-            <Icon name="bell.fill" size={15} />
-            <Text style={styles.reminderActionText}>Remind me when it's usually time to check</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={() => void Linking.openSettings()}
-            style={styles.reminderAction}
-            accessibilityRole="button"
-          >
-            <Icon name="bell.fill" size={15} />
-            <Text style={styles.reminderActionText}>Turn on notifications for Sorrel in Settings</Text>
-          </TouchableOpacity>
-        );
-      }
-    } else if (nextReminder) {
-      reminder = (
-        <Text style={styles.careTip}>
-          We'll remind you to check it on{" "}
-          {nextReminder.toLocaleDateString(undefined, {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          })}
-          .
-        </Text>
-      );
-    } else {
-      reminder = (
-        <Text style={styles.careTip}>
-          Log a couple of waterings and Sorrel will remind you when it's usually time to check.
-        </Text>
+      if (!rhythm || rhythm.medianDays < 1) return null;
+      return permission.canAskAgain ? (
+        <ListRow icon="bell.fill" tint={Tiles.red} title="Get a reminder" subtitle="When it's usually time to check" onPress={handleAllowReminders} />
+      ) : (
+        <ListRow icon="bell.slash.fill" tint={Tiles.grey} title="Notifications are off" subtitle="Turn them on for Sorrel in Settings" onPress={() => void Linking.openSettings()} />
       );
     }
-  }
+
+    return (
+      <ListRow
+        icon="bell.fill"
+        tint={Tiles.red}
+        title="Reminder"
+        subtitle={
+          nextReminder
+            ? `We'll remind you on ${nextReminder.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}`
+            : "Log a couple of waterings and Sorrel will remind you when it's usually time"
+        }
+      />
+    );
+  })();
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {header}
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      {header}
 
-        <View style={styles.body}>
-          <View style={styles.addLogSection}>
-            <Text style={styles.sectionTitle}>Log a watering</Text>
-
-            {/* The compact picker is always present and opens its own
-                calendar. Future dates are refused: a watering that hasn't
-                happened yet isn't history. */}
-            <View style={styles.dateRow}>
-              <Text style={styles.fieldLabel}>Date</Text>
-              <DateTimePicker
-                value={selectedDate}
-                mode="date"
-                display="compact"
-                maximumDate={new Date()}
-                onChange={(_event, date) => {
-                  if (date) setSelectedDate(date);
-                }}
-                accentColor={Colors.leaf}
-              />
-            </View>
-
-            <Text style={styles.fieldLabel}>Amount</Text>
-            <View style={styles.amountButtons}>
-              {AMOUNTS.map(({ amount, label, icon }) => {
-                const active = selectedAmount === amount;
-                return (
-                  <TouchableOpacity
-                    key={amount}
-                    style={[styles.amountButton, active && styles.amountButtonActive]}
-                    onPress={() => setSelectedAmount(amount)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: active }}
-                  >
-                    <Icon name={icon} size={22} color={active ? "#FFFFFF" : Colors.leaf} />
-                    <Text style={[styles.amountText, active && styles.amountTextActive]}>{label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={styles.fieldLabel}>Notes (optional)</Text>
-            <TextInput
-              style={styles.notesInput}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="e.g. soil was bone dry, added feed"
-              placeholderTextColor={Colors.textDisabled}
-              multiline
-              maxLength={280}
-              returnKeyType="done"
-              blurOnSubmit
-            />
-
-            <Button label="Log watering" onPress={handleAddLog} loading={saving} disabled={saving} />
-          </View>
-
-          {/* Watering guidance. Every line has something real behind it: the
-              species notes, this user's own rhythm, and the season for their
-              hemisphere. */}
-          <View style={styles.careSection}>
-            <Text style={styles.sectionTitle}>Watering guidance</Text>
-
-            {care ? (
-              <>
-                <Text style={styles.careTip}>
-                  {care.matchedAt === "genus"
-                    ? `Plants in this genus usually ${describeWaterFrequency(care.guide.water.frequency)}.`
-                    : `This plant ${describeWaterFrequency(care.guide.water.frequency)}.`}
-                </Text>
-                {care.guide.water.seasonalModifier ? (
-                  <Text style={styles.careTip}>{care.guide.water.seasonalModifier}</Text>
-                ) : null}
-                {care.unreviewed ? (
-                  <Text style={styles.careCaveat}>
-                    These notes haven't been reviewed by a horticulturist yet.
-                  </Text>
-                ) : null}
-              </>
-            ) : null}
-
-            {rhythm ? <Text style={styles.careTip}>{describeRhythm(rhythm)}</Text> : null}
-
-            <Text style={styles.careTip}>{describeSeasonForWatering(currentSeason(hemisphere))}</Text>
-
-            {reminder}
-
-            <Text style={styles.careCaveat}>
-              Check the soil before watering — light, warmth and pot size change how fast it dries.
-            </Text>
-          </View>
-
-          <View style={styles.historySection}>
-            <Text style={styles.sectionTitle}>History</Text>
-
-            {logs.length === 0 ? (
-              <View style={styles.emptyHistory}>
-                <Icon name="drop" size={26} color={Colors.textSecondary} />
-                <Text style={styles.emptyText}>No watering logged yet</Text>
-                <Text style={styles.emptySubtext}>Log a watering above to start the history.</Text>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.hint}>Press and hold an entry to delete it.</Text>
-                {logs.map((item) => {
-                  const amount = AMOUNTS.find((a) => a.amount === item.amount);
-                  return (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={styles.logItem}
-                      onLongPress={() => handleDeleteLog(item.id)}
-                      accessibilityHint="Press and hold to delete"
-                    >
-                      <View style={styles.logIcon}>
-                        <Icon name={amount?.icon ?? "drop"} size={18} />
-                      </View>
-                      <View style={styles.logContent}>
-                        <Text style={styles.logDate}>
-                          {new Date(item.date).toLocaleDateString(undefined, {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </Text>
-                        {/* Entries saved before the amount was recorded
-                            genuinely have none; they just say "Watered". */}
-                        <Text style={styles.logAmount}>
-                          {amount ? `${amount.label} watering` : "Watered"}
-                        </Text>
-                        {/* Ternary, not &&: an empty-string note would render a
-                            bare string and crash React Native. */}
-                        {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </>
-            )}
-          </View>
+      <View style={styles.form}>
+        <View style={styles.formRow}>
+          <Text style={styles.formLabel}>Date</Text>
+          {/* Future dates refused: a watering that hasn't happened isn't history. */}
+          <DateTimePicker
+            value={selectedDate}
+            mode="date"
+            display="compact"
+            maximumDate={new Date()}
+            onChange={(_event, date) => {
+              if (date) setSelectedDate(date);
+            }}
+            accentColor={Colors.brand}
+          />
         </View>
-      </ScrollView>
-    </View>
+
+        <Text style={styles.formLabel}>Amount</Text>
+        <View style={styles.amounts}>
+          {AMOUNTS.map(({ amount, label, icon }) => {
+            const active = selectedAmount === amount;
+            return (
+              <Pressable
+                key={amount}
+                style={[styles.amount, active && styles.amountActive]}
+                onPress={() => setSelectedAmount(amount)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: active }}
+              >
+                <Icon name={icon} size={22} color={active ? Colors.brand : Colors.textSecondary} weight="semibold" />
+                <Text style={[styles.amountText, active && styles.amountTextActive]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <TextInput
+          style={styles.notes}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="Add a note (optional)"
+          placeholderTextColor={Colors.textDisabled}
+          multiline
+          maxLength={280}
+          returnKeyType="done"
+          blurOnSubmit
+        />
+
+        <Button label="Log watering" icon="drop.fill" onPress={handleAddLog} loading={saving} disabled={saving} />
+      </View>
+
+      {/* Every line has something real behind it: the species notes, this
+          user's own rhythm, and the season for their hemisphere. */}
+      <ListGroup
+        title="Guidance"
+        footer={`Check the soil before watering — light, warmth and pot size change how fast it dries.${care?.unreviewed ? " These care notes haven't been reviewed by a horticulturist yet." : ""}`}
+      >
+        {care ? (
+          <ListRow
+            icon="leaf.fill"
+            tint={Tiles.green}
+            title={care.matchedAt === "genus" ? "For this genus" : "For this plant"}
+            subtitle={`${care.matchedAt === "genus" ? "Usually" : "It"} ${describeWaterFrequency(care.guide.water.frequency)}.${care.guide.water.seasonalModifier ? ` ${care.guide.water.seasonalModifier}` : ""}`}
+          />
+        ) : null}
+        {rhythm ? <ListRow icon="clock.fill" tint={Tiles.blue} title="Your rhythm" subtitle={describeRhythm(rhythm)} /> : null}
+        <ListRow
+          icon={SEASON_ICON[season]}
+          tint={Tiles.amber}
+          title={season.charAt(0).toUpperCase() + season.slice(1)}
+          subtitle={describeSeasonForWatering(season)}
+        />
+        {reminderRow}
+      </ListGroup>
+
+      {logs.length === 0 ? (
+        <View style={styles.emptyHistory}>
+          <Text style={styles.emptyTitle}>No waterings logged yet</Text>
+          <Text style={styles.emptyBody}>Your history will appear here.</Text>
+        </View>
+      ) : (
+        <ListGroup title="History" footer="Press and hold an entry to delete it.">
+          {logs.map((item) => {
+            const amount = AMOUNTS.find((a) => a.amount === item.amount);
+            // Entries saved before the amount was recorded just say "Watered".
+            const detail = [amount ? `${amount.label} watering` : "Watered", item.notes].filter(Boolean).join(" · ");
+            return (
+              <ListRow
+                key={item.id}
+                icon={amount?.icon ?? "drop"}
+                tint={Tiles.blue}
+                title={new Date(item.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}
+                subtitle={detail}
+                onLongPress={() => handleDeleteLog(item.id)}
+              />
+            );
+          })}
+        </ListGroup>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.bg,
+  },
+  scrollContent: {
+    paddingBottom: Spacing.extra,
   },
   loader: {
     marginTop: Spacing.spacious,
   },
-  content: {
-    flex: 1,
+  stateCard: {
+    margin: Spacing.default,
+    alignItems: "center",
+    padding: Spacing.loose,
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.card,
+    gap: Spacing.tight,
   },
-  body: {
-    paddingHorizontal: Spacing.default,
-    paddingBottom: Spacing.extra,
-    gap: Spacing.loose,
-  },
-  addLogSection: {
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.glass,
-    backgroundColor: Colors.surface,
-    padding: Spacing.default,
-  },
-  sectionTitle: {
+  stateTitle: {
     ...Typography.headline,
     color: Colors.textPrimary,
-    marginBottom: Spacing.default,
+    marginTop: Spacing.tight,
   },
-  fieldLabel: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.tight,
-  },
-  dateRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.default,
-  },
-  amountButtons: {
-    flexDirection: "row",
-    gap: Spacing.tight,
-    marginBottom: Spacing.default,
-  },
-  amountButton: {
-    flex: 1,
-    minHeight: 64,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: Colors.glass,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.compact,
-    backgroundColor: Colors.background,
-  },
-  amountButtonActive: {
-    backgroundColor: Colors.leaf,
-    borderColor: Colors.leaf,
-  },
-  amountText: {
-    ...Typography.caption1,
-    color: Colors.textPrimary,
-  },
-  amountTextActive: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  notesInput: {
+  stateBody: {
     ...Typography.body,
-    minHeight: 72,
-    paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.default,
-    backgroundColor: Colors.background,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.glass,
-    marginBottom: Spacing.default,
-    color: Colors.textPrimary,
-    textAlignVertical: "top",
-  },
-  careSection: {
-    gap: Spacing.tight,
-  },
-  careTip: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-  },
-  careCaveat: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    fontStyle: "italic",
-  },
-  reminderAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.tight,
-    minHeight: 44,
-  },
-  reminderActionText: {
-    ...Typography.bodyLarge,
-    color: Colors.leaf,
-    fontWeight: "600",
-    flexShrink: 1,
-  },
-  historySection: {},
-  hint: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.tight,
-  },
-  emptyHistory: {
-    alignItems: "center",
-    paddingVertical: Spacing.spacious,
-    paddingHorizontal: Spacing.default,
-    gap: Spacing.tight,
-  },
-  emptyText: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  emptySubtext: {
-    ...Typography.caption1,
     color: Colors.textSecondary,
     textAlign: "center",
   },
-  logItem: {
+  form: {
+    marginHorizontal: Spacing.default,
+    marginBottom: Spacing.loose,
+    padding: Spacing.default,
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.card,
+    gap: Spacing.default - 4,
+  },
+  formRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: Spacing.default,
-    paddingVertical: Spacing.default,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.glass,
-  },
-  logIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "rgba(45, 88, 66, 0.08)",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
   },
-  logContent: {
-    flex: 1,
-    gap: 2,
-  },
-  logDate: {
+  formLabel: {
     ...Typography.subheadline,
     color: Colors.textPrimary,
   },
-  logAmount: {
+  amounts: {
+    flexDirection: "row",
+    gap: Spacing.tight,
+  },
+  amount: {
+    flex: 1,
+    minHeight: 68,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: Colors.separator,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  amountActive: {
+    borderColor: Colors.brand,
+    backgroundColor: Colors.brandTint,
+  },
+  amountText: {
     ...Typography.caption1,
     color: Colors.textSecondary,
   },
-  logNotes: {
+  amountTextActive: {
+    color: Colors.brandDark,
+    fontWeight: "600",
+  },
+  notes: {
     ...Typography.body,
+    minHeight: 64,
+    paddingHorizontal: Spacing.default - 2,
+    paddingTop: Spacing.default - 4,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bg,
     color: Colors.textPrimary,
-    marginTop: Spacing.compact,
+    textAlignVertical: "top",
+  },
+  emptyHistory: {
+    alignItems: "center",
+    paddingVertical: Spacing.loose,
+    gap: 4,
+  },
+  emptyTitle: {
+    ...Typography.subheadline,
+    color: Colors.textPrimary,
+  },
+  emptyBody: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
   },
 });

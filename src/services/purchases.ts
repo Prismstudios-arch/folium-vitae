@@ -15,6 +15,7 @@
 import { Platform } from "react-native";
 import { REVENUECAT_PUBLIC_KEY } from "@constants/config";
 import { getApiClient } from "./apiClient";
+import { bootstrapSession } from "./session";
 import { cancelTrialReminder } from "./trialReminder";
 import {
   TrialUnit,
@@ -70,10 +71,6 @@ export function purchasesStatus(): PurchasesStatus {
 /**
  * Start RevenueCat for this account, or move it to a new one.
  *
- * Nothing called this before. RevenueCat was never configured, so every
- * offerings request threw, the paywall always said it had nothing to show,
- * and no purchase could ever be made.
- *
  * Keyed to our own user id so the webhook resolves the purchase to the
  * account the server knows. If the account changes — deleting your data
  * signs you in as a new anonymous user — RevenueCat is moved with logIn,
@@ -99,6 +96,30 @@ export async function configurePurchases(appUserId: string): Promise<boolean> {
     console.error("Failed to configure purchases:", error);
     return false;
   }
+}
+
+/**
+ * Make sure RevenueCat is running before anything asks it for plans.
+ *
+ * It is started after sign-in at launch. If sign-in hadn't finished — or had
+ * failed, on a bad connection — the paywall used to find it unconfigured and
+ * report "Nothing to show" with no way to recover but restarting the app.
+ */
+async function ensureConfigured(): Promise<boolean> {
+  if (configuredUserId !== null) return true;
+
+  let userId = getApiClient().getUserId();
+
+  if (!userId) {
+    try {
+      await bootstrapSession();
+    } catch {
+      // Still offline.
+    }
+    userId = getApiClient().getUserId();
+  }
+
+  return userId ? configurePurchases(userId) : false;
 }
 
 /**
@@ -152,12 +173,10 @@ export interface Plan {
  * Whether this Apple ID can still get each product's free trial.
  *
  * Apple grants one trial per subscription group. Anyone who has had one and
- * taps "Start 1 week free" is charged immediately — so the paywall used to
- * promise every returning user a trial it could not give them.
- *
- * Only a definite "eligible" counts. RevenueCat's guidance for an unknown
- * status is to show the non-trial price, and a paywall that under-promises is
- * the right way round.
+ * taps "Start 1 week free" is charged immediately — so only a definite
+ * "eligible" counts. RevenueCat's guidance for an unknown status is to show
+ * the non-trial price, and a paywall that under-promises is the right way
+ * round.
  */
 async function checkTrialEligibility(
   sdk: PurchasesModule,
@@ -176,26 +195,50 @@ async function checkTrialEligibility(
   }
 }
 
+export interface PlanLoad {
+  plans: Plan[];
+  /** Why there are no plans, in words the paywall can show. Null when there are. */
+  problem: string | null;
+}
+
 /**
- * Plans currently on sale, straight from the store.
+ * Plans currently on sale, straight from the store — or the reason there
+ * aren't any.
  *
- * Returns an empty list rather than placeholder plans when nothing is
- * available. A paywall showing invented prices is worse than one that admits
- * it has nothing to sell.
+ * Never placeholder plans: a paywall showing invented prices is worse than
+ * one that admits it has nothing to sell. But "Nothing to show" alone was no
+ * use to anyone, so each empty case now says what's actually wrong.
  */
-export async function getPlans(): Promise<Plan[]> {
+export async function loadPlans(): Promise<PlanLoad> {
   const sdk = loadPurchases();
-  if (!sdk || configuredUserId === null) return [];
+  if (!sdk) {
+    return { plans: [], problem: unavailableReason ?? "Subscriptions aren't available on this build." };
+  }
+
+  if (!(await ensureConfigured())) {
+    return {
+      plans: [],
+      problem: "Couldn't connect to the App Store. Check your connection and try again.",
+    };
+  }
 
   try {
     const offerings = await sdk.getOfferings();
     const packages = offerings.current?.availablePackages ?? [];
+
+    if (packages.length === 0) {
+      return {
+        plans: [],
+        problem: "No plans are on sale right now. Please try again later.",
+      };
+    }
+
     const eligibility = await checkTrialEligibility(
       sdk,
       packages.map((pkg) => pkg.product.identifier)
     );
 
-    return packages.map((pkg) => {
+    const plans = packages.map((pkg) => {
       const product = pkg.product;
       const intro = product.introPrice;
       const unit = normaliseTrialUnit(intro?.periodUnit);
@@ -221,10 +264,34 @@ export async function getPlans(): Promise<Plan[]> {
             : null,
       };
     });
+
+    return { plans, problem: null };
   } catch (error) {
     console.error("Failed to load plans:", error);
-    return [];
+
+    const code = (error as { code?: string })?.code;
+
+    // RevenueCat's configuration error: the products it knows about weren't
+    // returned by the App Store. Before launch that almost always means the
+    // subscriptions aren't complete in App Store Connect yet.
+    if (code === sdk.PURCHASES_ERROR_CODE.CONFIGURATION_ERROR) {
+      return {
+        plans: [],
+        problem:
+          "The App Store didn't return any plans. They may still be waiting for approval — please try again later.",
+      };
+    }
+
+    return {
+      plans: [],
+      problem: "Couldn't load plans from the App Store. Check your connection and try again.",
+    };
   }
+}
+
+/** Plans only, for callers that don't show a reason. */
+export async function getPlans(): Promise<Plan[]> {
+  return (await loadPlans()).plans;
 }
 
 export interface PurchaseOutcome {
@@ -236,7 +303,7 @@ export interface PurchaseOutcome {
 
 export async function purchase(packageId: string): Promise<PurchaseOutcome> {
   const sdk = loadPurchases();
-  if (!sdk || configuredUserId === null) {
+  if (!sdk || !(await ensureConfigured())) {
     return {
       status: "failed",
       activeEntitlements: [],
@@ -280,7 +347,7 @@ export async function purchase(packageId: string): Promise<PurchaseOutcome> {
 /** Apple requires a restore path for anyone who reinstalls or changes device. */
 export async function restorePurchases(): Promise<PurchaseOutcome> {
   const sdk = loadPurchases();
-  if (!sdk || configuredUserId === null) {
+  if (!sdk || !(await ensureConfigured())) {
     return {
       status: "failed",
       activeEntitlements: [],

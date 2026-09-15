@@ -1,23 +1,11 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Platform,
-  Linking,
-} from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Alert, Dimensions, Platform, Linking } from "react-native";
 import { useState, useEffect } from "react";
 import { useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { Colors, Spacing, Typography } from "@constants/theme";
+import { Colors, Radius, Spacing, Tiles, Typography } from "@constants/theme";
 import { Button } from "@components/Button";
-import { Icon } from "@components/Icon";
-import { ScreenHeader } from "@components/ScreenHeader";
+import { IconTile } from "@components/ListGroup";
+import { ScreenHeader, HeaderIconButton } from "@components/ScreenHeader";
 import { PlantPhoto } from "@domain/plant";
 import { fetchPhotos, addPhoto, deletePhoto } from "@services/database";
 import { fingerprintPhoto } from "@services/photoStorage";
@@ -25,21 +13,19 @@ import { parseExifDate } from "@services/photoPaths";
 import { useGoBack } from "@hooks/useGoBack";
 
 const { width } = Dimensions.get("window");
-const PHOTO_SIZE = (width - Spacing.default * 3) / 2;
+const GAP = Spacing.default - 4;
+const PHOTO_SIZE = (width - Spacing.default * 2 - GAP) / 2;
 
 type Source = "camera" | "library";
 
 export default function PhotoJournalScreen() {
   const goBack = useGoBack("/my-plants");
-  const { plantId, plantName } = useLocalSearchParams<{
-    plantId: string;
-    plantName?: string;
-  }>();
+  const { plantId, plantName } = useLocalSearchParams<{ plantId: string; plantName?: string }>();
 
   const [photos, setPhotos] = useState<PlantPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // Photos whose file has gone — shown as a labelled gap, not a blank tile.
+  // Photos whose file has gone — a labelled gap, not a blank tile.
   const [unavailable, setUnavailable] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -63,8 +49,6 @@ export default function PhotoJournalScreen() {
     }
   };
 
-  // The journal could only import from the library. A growth journal you
-  // can't photograph your plant into today is missing its main use.
   const handleAddPhoto = () => {
     if (!plantId || saving) return;
 
@@ -80,14 +64,10 @@ export default function PhotoJournalScreen() {
       if (source === "camera") {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (!permission.granted) {
-          Alert.alert(
-            "Camera access is off",
-            "Allow camera access for Sorrel in Settings to take journal photos.",
-            [
-              { text: "Not now", style: "cancel" },
-              { text: "Open Settings", onPress: () => void Linking.openSettings() },
-            ]
-          );
+          Alert.alert("Camera access is off", "Allow camera access for Sorrel in Settings to take journal photos.", [
+            { text: "Not now", style: "cancel" },
+            { text: "Open Settings", onPress: () => void Linking.openSettings() },
+          ]);
           return;
         }
       }
@@ -102,42 +82,29 @@ export default function PhotoJournalScreen() {
       const result =
         source === "camera"
           ? await ImagePicker.launchCameraAsync(options)
-          : // EXIF is read only for the date the photo was taken; nothing
-            // else from it is kept.
+          : // EXIF is read only for the date the photo was taken.
             await ImagePicker.launchImageLibraryAsync({ ...options, exif: true });
 
       if (result.canceled || !result.assets[0]) return;
 
       const asset = result.assets[0];
 
-      // The old code hashed the image "so the same photo is not stored
-      // twice" and then never compared the hash with anything. This does.
       const fingerprint = fingerprintPhoto(asset.uri);
       if (fingerprint && photos.some((p) => p.imageHash === fingerprint)) {
         Alert.alert("Already in the journal", "That photo has already been added for this plant.");
         return;
       }
 
-      const dateTaken =
-        source === "library" ? (parseExifDate(asset.exif) ?? new Date()) : new Date();
+      const dateTaken = source === "library" ? (parseExifDate(asset.exif) ?? new Date()) : new Date();
 
-      // Alert.prompt is iOS-only — on Android it silently does nothing, and
-      // the photo would never be saved. Captions are optional, so Android
-      // saves straight away.
+      // Alert.prompt is iOS-only; Android saves straight away.
       if (Platform.OS === "ios") {
         Alert.prompt(
           "Add a note",
           "Anything worth remembering about this photo?",
           [
-            {
-              text: "Skip",
-              style: "cancel",
-              onPress: () => void savePhoto(asset.uri, fingerprint, dateTaken),
-            },
-            {
-              text: "Save",
-              onPress: (caption?: string) => void savePhoto(asset.uri, fingerprint, dateTaken, caption),
-            },
+            { text: "Skip", style: "cancel", onPress: () => void savePhoto(asset.uri, fingerprint, dateTaken) },
+            { text: "Save", onPress: (caption?: string) => void savePhoto(asset.uri, fingerprint, dateTaken, caption) },
           ],
           "plain-text",
           ""
@@ -154,18 +121,12 @@ export default function PhotoJournalScreen() {
     }
   };
 
-  const savePhoto = async (
-    uri: string,
-    fingerprint: string | null,
-    dateTaken: Date,
-    caption?: string
-  ) => {
+  const savePhoto = async (uri: string, fingerprint: string | null, dateTaken: Date, caption?: string) => {
     if (!plantId) return;
 
     setSaving(true);
     try {
-      // addPhoto copies the file out of the picker's cache, which iOS clears
-      // whenever it likes.
+      // addPhoto copies the file out of the picker's cache, which iOS clears.
       const saved = await addPhoto(plantId, {
         dateTaken,
         imagePath: uri,
@@ -173,9 +134,7 @@ export default function PhotoJournalScreen() {
         caption: caption?.trim() || undefined,
       });
 
-      setPhotos((current) =>
-        [saved, ...current].sort((a, b) => b.dateTaken.getTime() - a.dateTaken.getTime())
-      );
+      setPhotos((current) => [saved, ...current].sort((a, b) => b.dateTaken.getTime() - a.dateTaken.getTime()));
     } catch (error) {
       console.error("Failed to save photo:", error);
       Alert.alert("Couldn't save", "That photo wasn't added. Try again.");
@@ -206,22 +165,20 @@ export default function PhotoJournalScreen() {
     ]);
   };
 
-  const formatDate = (date: Date) =>
-    date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-
   const header = (
-    <ScreenHeader onBack={goBack} title="Photo journal" subtitle={plantName || undefined} />
+    <ScreenHeader
+      onBack={goBack}
+      title="Journal"
+      subtitle={plantName || undefined}
+      right={plantId && photos.length > 0 ? <HeaderIconButton icon="plus" label="Add a photo" onPress={handleAddPhoto} /> : undefined}
+    />
   );
 
   if (loading) {
     return (
       <View style={styles.container}>
         {header}
-        <ActivityIndicator size="large" color={Colors.leaf} style={styles.loader} />
+        <ActivityIndicator size="large" color={Colors.brand} style={styles.loader} />
       </View>
     );
   }
@@ -230,109 +187,127 @@ export default function PhotoJournalScreen() {
     return (
       <View style={styles.container}>
         {header}
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No plant selected</Text>
-          <Text style={styles.emptyText}>Open a plant from your collection to see its journal.</Text>
+        <View style={styles.stateCard}>
+          <IconTile icon="photo.stack" color={Tiles.grey} size={52} />
+          <Text style={styles.stateTitle}>No plant selected</Text>
+          <Text style={styles.stateBody}>Open a plant from your collection to see its journal.</Text>
         </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {header}
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      {header}
 
-        {photos.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
-              <Icon name="photo.stack" size={30} />
-            </View>
-            <Text style={styles.emptyTitle}>No photos yet</Text>
-            <Text style={styles.emptyText}>
-              Add a photo every few weeks and you'll be able to see how it has grown.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.gridWrap}>
-            <Text style={styles.hint}>Press and hold a photo to delete it.</Text>
-            {/* A wrapping grid of Views rather than a FlatList: a virtualised
-                list nested in a ScrollView warns and gains nothing here. */}
-            <View style={styles.grid}>
-              {photos.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.photoCard}
-                  onLongPress={() => handleDeletePhoto(item.id)}
-                  accessibilityHint="Press and hold to delete"
-                >
-                  {unavailable.has(item.id) ? (
-                    <View style={[styles.photoImage, styles.photoMissing]}>
-                      <Text style={styles.photoMissingText}>Photo no longer on this phone</Text>
-                    </View>
-                  ) : (
-                    <Image
-                      source={{ uri: item.imagePath }}
-                      style={styles.photoImage}
-                      onError={() => setUnavailable((prev) => new Set(prev).add(item.id))}
-                    />
-                  )}
-                  <View style={styles.photoInfo}>
-                    <Text style={styles.photoDate}>{formatDate(item.dateTaken)}</Text>
-                    {item.caption ? (
-                      <Text style={styles.photoCaption} numberOfLines={2}>
-                        {item.caption}
-                      </Text>
-                    ) : null}
+      {photos.length === 0 ? (
+        <View style={styles.stateCard}>
+          <IconTile icon="photo.stack" color={Tiles.purple} size={56} />
+          <Text style={styles.stateTitle}>Start a growth journal</Text>
+          <Text style={styles.stateBody}>Add a photo every few weeks and you'll be able to see how it has grown.</Text>
+          <Button label="Add the first photo" icon="camera.fill" onPress={handleAddPhoto} loading={saving} style={styles.stateButton} />
+        </View>
+      ) : (
+        <View style={styles.gridWrap}>
+          {/* A wrapping grid of Views: a FlatList nested in a ScrollView
+              warns and gains nothing here. */}
+          <View style={styles.grid}>
+            {photos.map((item) => (
+              <Pressable
+                key={item.id}
+                style={({ pressed }) => [styles.photoCard, pressed && styles.pressed]}
+                onLongPress={() => handleDeletePhoto(item.id)}
+                accessibilityHint="Press and hold to delete"
+              >
+                {unavailable.has(item.id) ? (
+                  <View style={[styles.photo, styles.photoMissing]}>
+                    <Text style={styles.photoMissingText}>Photo no longer on this phone</Text>
                   </View>
-                </TouchableOpacity>
-              ))}
-            </View>
+                ) : (
+                  <Image
+                    source={{ uri: item.imagePath }}
+                    style={styles.photo}
+                    onError={() => setUnavailable((prev) => new Set(prev).add(item.id))}
+                  />
+                )}
+                <View style={styles.photoInfo}>
+                  <Text style={styles.photoDate}>
+                    {item.dateTaken.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                  </Text>
+                  {item.caption ? (
+                    <Text style={styles.photoCaption} numberOfLines={2}>
+                      {item.caption}
+                    </Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            ))}
           </View>
-        )}
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <Button label="Add a photo" onPress={handleAddPhoto} disabled={saving} loading={saving} />
-      </View>
-    </View>
+          <Text style={styles.hint}>Press and hold a photo to delete it.</Text>
+          <Button label="Add a photo" icon="camera.fill" onPress={handleAddPhoto} loading={saving} style={styles.addButton} />
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.bg,
+  },
+  scrollContent: {
+    paddingBottom: Spacing.extra,
   },
   loader: {
     marginTop: Spacing.spacious,
   },
-  content: {
-    flex: 1,
+  stateCard: {
+    margin: Spacing.default,
+    alignItems: "center",
+    padding: Spacing.loose,
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.card,
+    gap: Spacing.tight,
+  },
+  stateTitle: {
+    ...Typography.headline,
+    color: Colors.textPrimary,
+    textAlign: "center",
+    marginTop: Spacing.tight,
+  },
+  stateBody: {
+    ...Typography.body,
+    lineHeight: 22,
+    color: Colors.textSecondary,
+    textAlign: "center",
+  },
+  stateButton: {
+    alignSelf: "stretch",
+    marginTop: Spacing.default,
   },
   gridWrap: {
     paddingHorizontal: Spacing.default,
   },
-  hint: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.default,
-  },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    columnGap: Spacing.default,
-    rowGap: Spacing.default,
-    paddingBottom: Spacing.default,
+    columnGap: GAP,
+    rowGap: GAP,
   },
   photoCard: {
     width: PHOTO_SIZE,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+    overflow: "hidden",
   },
-  photoImage: {
+  pressed: {
+    opacity: 0.9,
+  },
+  photo: {
     width: "100%",
     height: PHOTO_SIZE,
-    borderRadius: 14,
-    backgroundColor: Colors.glass,
+    backgroundColor: Colors.separator,
   },
   photoMissing: {
     alignItems: "center",
@@ -345,46 +320,25 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   photoInfo: {
-    paddingTop: Spacing.tight,
+    padding: Spacing.default - 4,
   },
   photoDate: {
     ...Typography.caption1,
-    color: Colors.textPrimary,
     fontWeight: "600",
+    color: Colors.textPrimary,
   },
   photoCaption: {
     ...Typography.caption1,
     color: Colors.textSecondary,
     marginTop: 2,
   },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: Spacing.extra,
-    paddingHorizontal: Spacing.loose,
-  },
-  emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: "rgba(45, 88, 66, 0.08)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: Spacing.loose,
-  },
-  emptyTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.tight,
-  },
-  emptyText: {
-    ...Typography.body,
-    lineHeight: 22,
+  hint: {
+    ...Typography.caption1,
     color: Colors.textSecondary,
     textAlign: "center",
+    marginTop: Spacing.default,
   },
-  footer: {
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.default,
+  addButton: {
+    marginTop: Spacing.default,
   },
 });
