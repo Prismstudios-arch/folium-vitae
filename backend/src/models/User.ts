@@ -12,9 +12,17 @@ import { hashPassword } from "../services/auth";
 
 export type Plan = "free" | "pro" | "premium";
 
-/** Daily identification allowance. Free tier is 7/day per SPEC 9. */
+/**
+ * Daily identification allowance.
+ *
+ * SPEC §9 started the free tier at 7 a day, with the note to do the
+ * arithmetic and tune. Each identification costs €0.05 at Kindwise's entry
+ * rate: a free user using all 7 every day costs €10.50 a month, about twice
+ * what a monthly subscriber nets after Apple's cut. At 3 a day the worst case
+ * is €4.50, and 3 is still enough to try the app properly and save a few plants.
+ */
 export const PLAN_QUOTAS: Record<Plan, number> = {
-  free: 7,
+  free: 3,
   pro: 50,
   premium: Number.MAX_SAFE_INTEGER,
 };
