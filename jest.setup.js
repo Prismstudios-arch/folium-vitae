@@ -87,6 +87,12 @@ jest.mock("react-native-reanimated", () => {
   };
 });
 
+// The App Store rating prompt is native; tests exercise the rule, not the prompt.
+jest.mock("expo-store-review", () => ({
+  isAvailableAsync: jest.fn(() => Promise.resolve(false)),
+  requestReview: jest.fn(() => Promise.resolve()),
+}));
+
 // SF Symbols are a native iOS view; tests only need the component to exist.
 jest.mock("expo-symbols", () => ({ SymbolView: () => null }));
 

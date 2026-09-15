@@ -22,7 +22,14 @@ import { updatePlant, deletePlant } from "@services/database";
 import { calibrateConfidence } from "@services/identification";
 import { selectionFeedback } from "@utils/feedback";
 import { formatCommonName } from "@utils/plantNames";
-import { ConfidenceBand, SavedPlant, Species, getDisplayName, getMostRecentPhoto } from "@domain/plant";
+import {
+  ConfidenceBand,
+  MIN_ALTERNATIVE_SCORE,
+  SavedPlant,
+  Species,
+  getDisplayName,
+  getMostRecentPhoto,
+} from "@domain/plant";
 
 export default function PlantDetailScreen() {
   const Colors = useColors();
@@ -284,7 +291,9 @@ function IdentificationCard({ plant, onChanged }: { plant: SavedPlant; onChanged
   const [changing, setChanging] = useState(false);
 
   const certain = plant.confidenceBand === ConfidenceBand.Confident;
-  const alternatives = savedCandidates(plant).filter((candidate) => candidate.scientificName !== plant.scientificName);
+  const alternatives = savedCandidates(plant).filter(
+    (candidate) => candidate.scientificName !== plant.scientificName && candidate.rawScore >= MIN_ALTERNATIVE_SCORE
+  );
 
   const choose = (candidate: Species) => {
     Alert.alert(

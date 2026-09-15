@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Share, ActivityIndicator, Linking, Image } from "react-native";
-import { useEffect, useState } from "react";
-import { useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
+import { getApiClient, QuotaState } from "@services/apiClient";
 import Constants from "expo-constants";
 import {
   AppearancePreference,
@@ -38,12 +39,25 @@ export default function SettingsScreen() {
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
   const [busy, setBusy] = useState(false);
   const { preference, setPreference } = useTheme();
+  const [plan, setPlan] = useState<QuotaState["plan"] | null>(null);
+  const isPremium = plan !== null && plan !== "free";
 
   useEffect(() => {
     getUserPreferences()
       .then(setPrefs)
       .catch((error) => console.error("Failed to load preferences:", error));
   }, []);
+
+  // From the server, which decides the plan. Refreshed whenever Settings is
+  // shown, so coming back from the paywall after buying shows Premium.
+  const refreshPlan = useCallback(() => {
+    getApiClient()
+      .getQuota()
+      .then((quota) => setPlan(quota.plan))
+      .catch(() => undefined);
+  }, []);
+
+  useFocusEffect(refreshPlan);
 
   const update = async (changes: Partial<UserPreferences>): Promise<boolean> => {
     if (!prefs) return false;
@@ -129,6 +143,7 @@ export default function SettingsScreen() {
         Alert.alert("Nothing to restore", outcome.message ?? "No previous purchases found on this Apple ID.");
       } else {
         await syncEntitlementsWithServer();
+        refreshPlan();
         Alert.alert("Restored", "Your subscription is active on this phone again.");
       }
     } finally {
@@ -193,23 +208,32 @@ export default function SettingsScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <ScreenHeader onBack={goBack} backLabel="Home" title="Settings" />
 
-      {/* Nothing in the app opened the paywall before, so Premium could not
-          be bought — and App Review has to be able to find it. */}
+      {/* App Review has to be able to find the paywall from here. A
+          subscriber gets their plan and Apple's management page instead of
+          being offered what they already pay for. */}
       <Pressable
-        onPress={() => router.push("/subscription")}
+        onPress={() => (isPremium ? void Linking.openURL(MANAGE_SUBSCRIPTION_URL) : router.push("/subscription"))}
         style={({ pressed }) => [styles.premium, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel="Sorrel Premium. Unlimited identifications and plant health checks"
+        accessibilityLabel={
+          isPremium
+            ? "You're on Sorrel Premium. Manage subscription"
+            : "Sorrel Premium. Unlimited identifications and plant health checks"
+        }
       >
         <HeroCard contentStyle={styles.premiumContent}>
           <View style={styles.premiumRow}>
             <View style={styles.premiumText}>
               <View style={styles.premiumBadge}>
                 <Icon name="crown.fill" size={11} color={Colors.brandDeep} />
-                <Text style={styles.premiumBadgeText}>Premium</Text>
+                <Text style={styles.premiumBadgeText}>{isPremium ? "Active" : "Premium"}</Text>
               </View>
-              <Text style={styles.premiumTitle}>Unlock everything</Text>
-              <Text style={styles.premiumBody}>Unlimited identifications and plant health checks</Text>
+              <Text style={styles.premiumTitle}>{isPremium ? "You're on Premium" : "Unlock everything"}</Text>
+              <Text style={styles.premiumBody}>
+                {isPremium
+                  ? "Unlimited identifications and health checks. Tap to manage."
+                  : "Unlimited identifications and plant health checks"}
+              </Text>
             </View>
             <Icon name="chevron.right" size={16} color="#FFFFFF" weight="semibold" />
           </View>

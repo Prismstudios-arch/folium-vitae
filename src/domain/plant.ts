@@ -65,6 +65,13 @@ export enum ConfidenceBand {
   NotSure = "notSure",
 }
 
+/**
+ * Below this, a candidate isn't offered as an alternative. A 1–2%
+ * "possibility" next to a 70% match is noise, and inviting someone to switch
+ * to it does them no favours.
+ */
+export const MIN_ALTERNATIVE_SCORE = 0.05;
+
 export interface CalibratedConfidence {
   band: ConfidenceBand;
   rawScore: number;

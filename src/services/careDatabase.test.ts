@@ -6,6 +6,7 @@ import {
   getCareGuide,
   searchCareGuides,
   careDatabaseStats,
+  listCareGuides,
 } from "./careDatabase";
 
 describe("careDatabase", () => {
@@ -165,6 +166,15 @@ describe("careDatabase", () => {
 
     it("returns nothing for an empty query rather than everything", () => {
       expect(searchCareGuides("   ")).toHaveLength(0);
+    });
+  });
+
+  describe("listCareGuides", () => {
+    it("returns every species record for browsing", () => {
+      const all = listCareGuides();
+
+      expect(all).toHaveLength(careDatabaseStats().species);
+      expect(all.every((guide) => guide.confidence === "species")).toBe(true);
     });
   });
 

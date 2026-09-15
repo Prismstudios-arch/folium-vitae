@@ -158,6 +158,13 @@ export default function HomeScreen() {
           onPress={() => router.push("/disease-detection")}
         />
         <ListRow
+          icon="magnifyingglass"
+          tint={Tiles.blue}
+          title="Look up a plant"
+          subtitle="Care notes, without scanning"
+          onPress={() => router.push("/plant-lookup")}
+        />
+        <ListRow
           icon="square.grid.2x2.fill"
           tint={Tiles.green}
           title="My Plants"

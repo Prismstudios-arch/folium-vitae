@@ -72,16 +72,17 @@ const SOIL: Record<SoilType, string> = {
   [SoilType.General]: "General potting mix",
 };
 
+// Short on purpose: each sits in a third of the screen's width.
 const DIFFICULTY: Record<CareDifficulty, string> = {
-  easy: "Easy care",
-  moderate: "Some care",
-  demanding: "Needs attention",
+  easy: "Easy",
+  moderate: "Moderate",
+  demanding: "Demanding",
 };
 
 const PLACEMENT: Record<CarePlacement, string> = {
-  indoor: "Houseplant",
-  outdoor: "Garden plant",
-  both: "Indoors or out",
+  indoor: "Indoors",
+  outdoor: "Outdoors",
+  both: "In or out",
 };
 
 /**
@@ -194,20 +195,57 @@ export function seasonalWatering(
 
 export type SafetyTone = "safe" | "caution" | "danger";
 
-/** One line for the pet-and-child question, with how worried to be. */
-export function describeToxicitySummary(toxicity: Toxicity): { tone: SafetyTone; label: string } {
-  const levels = [toxicity.cats, toxicity.dogs, toxicity.humans];
+/**
+ * The pet-and-child answer at a glance: a word or two, who it applies to,
+ * and how worried to be. "None known" rather than "safe": a care library can
+ * say what's recorded, not promise that a plant is harmless.
+ */
+export function describeToxicitySummary(toxicity: Toxicity): { tone: SafetyTone; label: string; detail: string } {
+  const pets = toxicity.cats !== ToxicityLevel.None || toxicity.dogs !== ToxicityLevel.None;
+  const people = toxicity.humans !== ToxicityLevel.None;
+  const detail = pets && people ? "Pets & people" : pets ? "To pets" : "If eaten";
 
-  if (levels.includes(ToxicityLevel.Severe)) {
-    return { tone: "danger", label: "Highly toxic" };
+  if ([toxicity.cats, toxicity.dogs, toxicity.humans].includes(ToxicityLevel.Severe)) {
+    return { tone: "danger", label: "Highly toxic", detail };
   }
-  if (toxicity.cats !== ToxicityLevel.None || toxicity.dogs !== ToxicityLevel.None) {
-    return { tone: "caution", label: "Toxic to pets" };
+  if (pets || people) {
+    return { tone: "caution", label: "Toxic", detail };
   }
-  if (toxicity.humans !== ToxicityLevel.None) {
-    return { tone: "caution", label: "Harmful if eaten" };
-  }
-  return { tone: "safe", label: "No known toxicity" };
+  return { tone: "safe", label: "None known", detail: "Toxicity" };
+}
+
+const WHO_WORDS: Array<{ key: "cats" | "dogs" | "humans"; word: string }> = [
+  { key: "cats", word: "cats" },
+  { key: "dogs", word: "dogs" },
+  { key: "humans", word: "people" },
+];
+
+function joinWords(words: string[]): string {
+  return words.length <= 1 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+/**
+ * "Toxic to cats and dogs", or null when nothing is affected. Severe ratings
+ * are named on their own, so a lily reads "Highly toxic to cats" without
+ * overstating what it does to anyone else.
+ */
+export function describeToxicityHeadline(toxicity: Toxicity): string | null {
+  const severe = WHO_WORDS.filter(({ key }) => toxicity[key] === ToxicityLevel.Severe).map(({ word }) => word);
+  const other = WHO_WORDS.filter(
+    ({ key }) => toxicity[key] !== ToxicityLevel.None && toxicity[key] !== ToxicityLevel.Severe
+  ).map(({ word }) => word);
+
+  if (severe.length === 0 && other.length === 0) return null;
+  if (severe.length === 0) return `Toxic to ${joinWords(other)}`;
+  if (other.length === 0) return `Highly toxic to ${joinWords(severe)}`;
+  return `Highly toxic to ${joinWords(severe)}, and toxic to ${joinWords(other)}`;
+}
+
+/** "Cats: moderate · Dogs: moderate" — the severity for each, in one line. */
+export function describeToxicityLevels(toxicity: Toxicity): string {
+  return WHO_WORDS.filter(({ key }) => toxicity[key] !== ToxicityLevel.None)
+    .map(({ key, word }) => `${capitalise(word)}: ${humanise(toxicity[key])}`)
+    .join(" · ");
 }
 
 export function describeToxicityLevel(level: ToxicityLevel): string {

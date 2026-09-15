@@ -168,7 +168,7 @@ function Welcome() {
       </View>
       <Text style={styles.welcomeTitle}>Know every{"\n"}plant you grow.</Text>
       <Text style={styles.welcomeBody}>
-        Point your camera at a plant. Sorrel tells you what it is — and exactly how sure it is.
+        Snap any plant. Sorrel tells you what it is — and exactly how sure it is.
       </Text>
 
       <View style={styles.welcomePoints}>

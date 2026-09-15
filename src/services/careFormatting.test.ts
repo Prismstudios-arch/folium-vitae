@@ -5,11 +5,15 @@ import {
   describeWaterCue,
   describeWaterShort,
   describeSoil,
+  describeToxicityHeadline,
+  describeToxicityLevels,
   describeToxicitySummary,
   formatTemperature,
   formatTemperatureRange,
   seasonalWatering,
 } from "./careFormatting";
+
+const { None, Mild, Moderate, Severe } = ToxicityLevel;
 
 describe("describeLight", () => {
   it("names a single level once", () => {
@@ -113,28 +117,59 @@ describe("seasonalWatering", () => {
 });
 
 describe("describeToxicitySummary", () => {
-  const none = ToxicityLevel.None;
-
-  it("calls out anything severe", () => {
-    expect(describeToxicitySummary({ cats: ToxicityLevel.Severe, dogs: none, humans: none })).toEqual({
+  it("calls out anything severe, and who it affects", () => {
+    expect(describeToxicitySummary({ cats: Severe, dogs: None, humans: None })).toEqual({
       tone: "danger",
       label: "Highly toxic",
+      detail: "To pets",
     });
+    expect(describeToxicitySummary({ cats: Severe, dogs: Severe, humans: Severe }).detail).toBe("Pets & people");
   });
 
   it("warns about pets", () => {
-    expect(describeToxicitySummary({ cats: ToxicityLevel.Mild, dogs: none, humans: none }).label).toBe("Toxic to pets");
+    expect(describeToxicitySummary({ cats: Mild, dogs: None, humans: None })).toEqual({
+      tone: "caution",
+      label: "Toxic",
+      detail: "To pets",
+    });
   });
 
   it("warns about people when only people are affected", () => {
-    expect(describeToxicitySummary({ cats: none, dogs: none, humans: ToxicityLevel.Mild }).label).toBe("Harmful if eaten");
+    expect(describeToxicitySummary({ cats: None, dogs: None, humans: Mild }).detail).toBe("If eaten");
   });
 
   // "Safe" would promise more than a care library can.
-  it("says no known toxicity rather than calling a plant safe", () => {
-    expect(describeToxicitySummary({ cats: none, dogs: none, humans: none })).toEqual({
+  it("says none known rather than calling a plant safe", () => {
+    expect(describeToxicitySummary({ cats: None, dogs: None, humans: None })).toEqual({
       tone: "safe",
-      label: "No known toxicity",
+      label: "None known",
+      detail: "Toxicity",
     });
+  });
+});
+
+describe("describeToxicityHeadline and describeToxicityLevels", () => {
+  it("names everyone affected in plain English", () => {
+    expect(describeToxicityHeadline({ cats: Moderate, dogs: Moderate, humans: None })).toBe("Toxic to cats and dogs");
+    expect(describeToxicityHeadline({ cats: Mild, dogs: Mild, humans: Mild })).toBe("Toxic to cats, dogs and people");
+  });
+
+  // A lily is deadly to cats and not listed for dogs; the headline must say
+  // exactly that and no more.
+  it("names severe cases on their own", () => {
+    expect(describeToxicityHeadline({ cats: Severe, dogs: None, humans: None })).toBe("Highly toxic to cats");
+    expect(describeToxicityHeadline({ cats: Severe, dogs: Severe, humans: Mild })).toBe(
+      "Highly toxic to cats and dogs, and toxic to people"
+    );
+  });
+
+  it("has no headline for a plant with no recorded toxicity", () => {
+    expect(describeToxicityHeadline({ cats: None, dogs: None, humans: None })).toBeNull();
+  });
+
+  it("lists the severity for each", () => {
+    expect(describeToxicityLevels({ cats: Moderate, dogs: Moderate, humans: None })).toBe(
+      "Cats: moderate · Dogs: moderate"
+    );
   });
 });

@@ -83,7 +83,8 @@ export function CareCard({ care, units = "metric", hemisphere = "north", toxicit
     icon: "square.stack.3d.down.forward.fill",
     color: Tiles.grey,
     title: "Soil",
-    body: guide.soil.notes ? `${describeSoil(guide.soil.type)}. ${guide.soil.notes}` : describeSoil(guide.soil.type),
+    // The written note already names the mix; the type label only fills in when there's no note.
+    body: guide.soil.notes ?? describeSoil(guide.soil.type),
   });
   if (guide.feeding) details.push({ icon: "leaf.fill", color: Tiles.green, title: "Feeding", body: guide.feeding });
   if (guide.repotting) details.push({ icon: "arrow.up.bin.fill", color: Tiles.purple, title: "Repotting", body: guide.repotting });
@@ -102,15 +103,24 @@ export function CareCard({ care, units = "metric", hemisphere = "north", toxicit
         </View>
       ) : null}
 
-      <View style={styles.pills}>
-        <Pill icon="gauge.with.dots.needle.33percent" label={describeDifficulty(guide.difficulty)} />
-        <Pill icon={guide.placement === "outdoor" ? "tree.fill" : "house.fill"} label={describePlacement(guide.placement)} />
+      <View style={styles.glances}>
+        <Glance icon="gauge.with.dots.needle.33percent" value={describeDifficulty(guide.difficulty)} caption="Care" />
+        <View style={styles.glanceDivider} />
+        <Glance
+          icon={guide.placement === "outdoor" ? "tree.fill" : "house.fill"}
+          value={describePlacement(guide.placement)}
+          caption="Grows"
+        />
         {toxicity !== "hidden" ? (
-          <Pill
-            icon={safety.tone === "safe" ? "checkmark.shield.fill" : "exclamationmark.triangle.fill"}
-            label={safety.label}
-            tone={safety.tone}
-          />
+          <>
+            <View style={styles.glanceDivider} />
+            <Glance
+              icon={safety.tone === "safe" ? "checkmark.shield.fill" : "exclamationmark.triangle.fill"}
+              value={safety.label}
+              caption={safety.detail}
+              tone={safety.tone}
+            />
+          </>
         ) : null}
       </View>
 
@@ -256,16 +266,25 @@ export function CareCard({ care, units = "metric", hemisphere = "north", toxicit
   );
 }
 
-function Pill({ icon, label, tone }: { icon: SFSymbol; label: string; tone?: SafetyTone }) {
+/** One of three facts in a row. Pills wrapped onto a second line on a phone. */
+function Glance({ icon, value, caption, tone }: { icon: SFSymbol; value: string; caption: string; tone?: SafetyTone }) {
   const Colors = useColors();
   const styles = useThemedStyles(createStyles);
-  const color =
-    tone === "danger" ? Colors.error : tone === "caution" ? Colors.toxicity : tone === "safe" ? Colors.brand : Colors.textSecondary;
+  const color = tone === "danger" ? Colors.error : tone === "caution" ? Colors.toxicity : Colors.brand;
 
   return (
-    <View style={styles.pill}>
-      <Icon name={icon} size={13} color={color} weight="semibold" />
-      <Text style={[styles.pillText, tone && tone !== "safe" ? { color } : null]}>{label}</Text>
+    <View style={styles.glance} accessible accessibilityLabel={`${caption}: ${value}`}>
+      <Icon name={icon} size={18} color={color} weight="semibold" />
+      <Text
+        style={[styles.glanceValue, tone && tone !== "safe" ? { color } : null]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
+        {value}
+      </Text>
+      <Text style={styles.glanceCaption} numberOfLines={1}>
+        {caption}
+      </Text>
     </View>
   );
 }
@@ -327,24 +346,33 @@ const createStyles = (Colors: Palette) =>
       color: Colors.brandDark,
       flex: 1,
     },
-    pills: {
+    glances: {
       flexDirection: "row",
-      flexWrap: "wrap",
-      gap: Spacing.tight,
-    },
-    pill: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      paddingHorizontal: Spacing.default - 6,
-      paddingVertical: 6,
-      borderRadius: Radius.pill,
+      paddingVertical: Spacing.default - 2,
+      borderRadius: Radius.lg,
       backgroundColor: Colors.card,
     },
-    pillText: {
-      ...Typography.caption1,
-      fontWeight: "600",
+    glanceDivider: {
+      width: StyleSheet.hairlineWidth,
+      marginVertical: Spacing.compact,
+      backgroundColor: Colors.separator,
+    },
+    glance: {
+      flex: 1,
+      alignItems: "center",
+      gap: 3,
+      paddingHorizontal: Spacing.compact,
+    },
+    glanceValue: {
+      ...Typography.subheadline,
+      fontSize: 15,
+      lineHeight: 20,
       color: Colors.textPrimary,
+      marginTop: 2,
+    },
+    glanceCaption: {
+      ...Typography.caption2,
+      color: Colors.textSecondary,
     },
     now: {
       flexDirection: "row",

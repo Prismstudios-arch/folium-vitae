@@ -20,9 +20,11 @@ import { calibrateConfidence } from "@services/identification";
 import { lookupCareGuide } from "@services/careDatabase";
 import { getUserPreferences } from "@services/userPreferences";
 import type { Hemisphere } from "@services/wateringInsights";
-import { createPlant, addPhoto } from "@services/database";
+import { createPlant, addPhoto, fetchAllPlants } from "@services/database";
 import { ErrorCode } from "@services/apiClient";
-import { ConfidenceBand, Species, getToxicityText } from "@domain/plant";
+import { ConfidenceBand, MIN_ALTERNATIVE_SCORE, Species } from "@domain/plant";
+import { describeToxicityHeadline, describeToxicityLevels } from "@services/careFormatting";
+import { maybeAskForReview } from "@services/reviewPrompt";
 
 const MAX_CANDIDATES = 3;
 const PHOTO_HEIGHT = 360;
@@ -72,7 +74,10 @@ export default function ResultScreen() {
       });
   }, []);
 
-  const candidates = result?.candidates.slice(0, MAX_CANDIDATES) ?? [];
+  // The top match always; the others only if they're a real possibility.
+  const candidates = (result?.candidates ?? [])
+    .slice(0, MAX_CANDIDATES)
+    .filter((candidate, index) => index === 0 || candidate.rawScore >= MIN_ALTERNATIVE_SCORE);
   const top = candidates[0];
   const topConfidence = top ? calibrateConfidence(top.rawScore) : null;
   const notSure = topConfidence?.band === ConfidenceBand.NotSure;
@@ -80,7 +85,7 @@ export default function ResultScreen() {
   const selected: Species | undefined = candidates[selectedIndex] ?? top;
   const selectedConfidence = selected ? calibrateConfidence(selected.rawScore) : null;
   const care = selected ? lookupCareGuide(selected.scientificName) : null;
-  const toxicityText = care ? getToxicityText(care.guide.toxicity) : null;
+  const toxicityHeadline = care ? describeToxicityHeadline(care.guide.toxicity) : null;
   const savedId = savedIds[selectedIndex];
 
   const handleSave = async () => {
@@ -118,6 +123,14 @@ export default function ResultScreen() {
 
       setSavedIds((current) => ({ ...current, [selectedIndex]: plant.id }));
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      // Something just worked — the right moment, if any, to ask for a
+      // rating. Delayed so the saved state shows first.
+      setTimeout(() => {
+        fetchAllPlants()
+          .then((all) => maybeAskForReview(all.length))
+          .catch(() => undefined);
+      }, 1500);
     } catch (err) {
       console.error("Failed to save plant:", err);
       Alert.alert("Couldn't save", "That plant wasn't added to your collection. Try again.");
@@ -259,11 +272,12 @@ export default function ResultScreen() {
               />
             ) : null}
 
-            {warnAboutToxicity && toxicityText ? (
+            {warnAboutToxicity && care && toxicityHeadline ? (
               <View style={styles.toxicity}>
                 <IconTile icon="exclamationmark.triangle.fill" color={Tiles.orange} size={36} />
                 <View style={styles.toxicityText}>
-                  <Text style={styles.toxicityTitle}>{toxicityText}</Text>
+                  <Text style={styles.toxicityTitle}>{toxicityHeadline}</Text>
+                  <Text style={styles.toxicityLevels}>{describeToxicityLevels(care.guide.toxicity)}</Text>
                   {care?.guide.toxicity.notes ? <Text style={styles.toxicityBody}>{care.guide.toxicity.notes}</Text> : null}
                   <Text style={styles.toxicityFine}>
                     If a pet or child has eaten this, contact a vet or your poison service. Don't wait on an app.
@@ -568,6 +582,12 @@ const createStyles = (Colors: Palette) =>
     toxicityTitle: {
       ...Typography.subheadline,
       color: Colors.toxicity,
+    },
+    toxicityLevels: {
+      ...Typography.caption1,
+      fontWeight: "600",
+      color: Colors.toxicity,
+      marginTop: 2,
     },
     toxicityBody: {
       ...Typography.body,

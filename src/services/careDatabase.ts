@@ -238,6 +238,11 @@ export function searchCareGuides(query: string): CareGuide[] {
     .map(toCareGuide);
 }
 
+/** Every species record, for browsing the library without a scan. */
+export function listCareGuides(): CareGuide[] {
+  return speciesGuides.map(toCareGuide);
+}
+
 /** How much of the library is filled in, and how much of it is attributed. */
 export function careDatabaseStats() {
   return {
