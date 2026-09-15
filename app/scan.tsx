@@ -1,22 +1,16 @@
 import { View, Text, StyleSheet, Pressable, Linking } from "react-native";
 import { useCallback, useEffect, useState } from "react";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useIsFocused } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { CameraView } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-  cancelAnimation,
-} from "react-native-reanimated";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, Radius, Spacing, Tiles, Typography } from "@constants/theme";
+import { Radius, Spacing, Tiles, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Button } from "@components/Button";
+import { ScanSweep } from "@components/ScanSweep";
 import { Icon } from "@components/Icon";
 import { IconTile } from "@components/ListGroup";
 import { useGoBack } from "@hooks/useGoBack";
@@ -31,10 +25,12 @@ const CORNER = 46;
 const CORNER_WIDTH = 4;
 
 export default function ScanScreen() {
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // Onboarding arrives here with router.replace, leaving no history.
   const goBack = useGoBack("/");
+  const isFocused = useIsFocused();
   const { cameraRef, hasPermission, canAskAgain, requestCameraPermission, isTorchOn, toggleTorch, capturePhoto } =
     useCamera();
 
@@ -130,7 +126,6 @@ export default function ScanScreen() {
     // requesting silently does nothing — so offer Settings, and a way back.
     return (
       <View style={[styles.permission, { paddingTop: insets.top, paddingBottom: insets.bottom + Spacing.default }]}>
-        <StatusBar style="dark" />
         <View style={styles.permissionBody}>
           <IconTile icon="camera.fill" color={Tiles.green} size={64} />
           <Text style={styles.permissionTitle}>Sorrel needs your camera</Text>
@@ -163,7 +158,9 @@ export default function ScanScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="light" />
+      {/* Only while this screen shows. It stays mounted under the result,
+          and its white status bar used to stay too — white on a light page. */}
+      {isFocused ? <StatusBar style="light" /> : null}
 
       {/* The camera fills the screen and the controls sit on top as a
           sibling: children of CameraView don't reliably receive touches. */}
@@ -189,7 +186,7 @@ export default function ScanScreen() {
             <View style={[styles.corner, styles.cornerTopRight, busy && styles.cornerBusy]} />
             <View style={[styles.corner, styles.cornerBottomLeft, busy && styles.cornerBusy]} />
             <View style={[styles.corner, styles.cornerBottomRight, busy && styles.cornerBusy]} />
-            {busy ? <ScanLine /> : null}
+            {busy ? <ScanSweep travel={FRAME_SIZE - 24} style={styles.scanLine} /> : null}
           </View>
         </View>
 
@@ -232,22 +229,6 @@ export default function ScanScreen() {
   );
 }
 
-/** A line sweeping the frame while the photo is checked. */
-function ScanLine() {
-  const progress = useSharedValue(0);
-
-  useEffect(() => {
-    progress.value = withRepeat(withTiming(1, { duration: 1300, easing: Easing.inOut(Easing.quad) }), -1, true);
-    return () => cancelAnimation(progress);
-  }, [progress]);
-
-  const style = useAnimatedStyle(() => ({
-    transform: [{ translateY: progress.value * (FRAME_SIZE - 24) }],
-  }));
-
-  return <Animated.View style={[styles.scanLine, style]} />;
-}
-
 function RoundButton({
   icon,
   label,
@@ -263,6 +244,8 @@ function RoundButton({
   active?: boolean;
   large?: boolean;
 }) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -283,195 +266,188 @@ function RoundButton({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000000",
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: "space-between",
-  },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.default,
-  },
-  titlePill: {
-    paddingHorizontal: Spacing.default - 2,
-    paddingVertical: 7,
-    borderRadius: Radius.pill,
-    backgroundColor: SCRIM,
-  },
-  titlePillText: {
-    ...Typography.controlSmall,
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  roundButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: SCRIM,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  roundButtonLarge: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-  },
-  roundButtonActive: {
-    backgroundColor: Colors.brandBright,
-  },
-  roundButtonPressed: {
-    opacity: 0.7,
-  },
-  frameArea: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  frame: {
-    width: FRAME_SIZE,
-    height: FRAME_SIZE,
-    overflow: "hidden",
-  },
-  corner: {
-    position: "absolute",
-    width: CORNER,
-    height: CORNER,
-    borderColor: "#FFFFFF",
-  },
-  cornerBusy: {
-    borderColor: Colors.brandBright,
-  },
-  cornerTopLeft: {
-    top: 0,
-    left: 0,
-    borderTopWidth: CORNER_WIDTH,
-    borderLeftWidth: CORNER_WIDTH,
-    borderTopLeftRadius: 18,
-  },
-  cornerTopRight: {
-    top: 0,
-    right: 0,
-    borderTopWidth: CORNER_WIDTH,
-    borderRightWidth: CORNER_WIDTH,
-    borderTopRightRadius: 18,
-  },
-  cornerBottomLeft: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: CORNER_WIDTH,
-    borderLeftWidth: CORNER_WIDTH,
-    borderBottomLeftRadius: 18,
-  },
-  cornerBottomRight: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: CORNER_WIDTH,
-    borderRightWidth: CORNER_WIDTH,
-    borderBottomRightRadius: 18,
-  },
-  scanLine: {
-    position: "absolute",
-    top: 12,
-    left: 14,
-    right: 14,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: Colors.brandBright,
-    shadowColor: Colors.brandBright,
-    shadowOpacity: 0.9,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  bottom: {
-    paddingHorizontal: Spacing.default,
-    gap: Spacing.loose,
-  },
-  message: {
-    alignSelf: "center",
-    backgroundColor: SCRIM,
-    borderRadius: Radius.pill,
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.tight,
-    maxWidth: "92%",
-  },
-  messageFailed: {
-    backgroundColor: "rgba(208, 64, 43, 0.9)",
-    borderRadius: Radius.md,
-  },
-  messageText: {
-    ...Typography.caption1,
-    fontWeight: "500",
-    color: "#FFFFFF",
-    textAlign: "center",
-  },
-  controls: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.loose,
-  },
-  controlSpacer: {
-    width: 56,
-  },
-  shutter: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    borderWidth: 4,
-    borderColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  shutterPressed: {
-    transform: [{ scale: 0.94 }],
-  },
-  shutterInner: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
-    backgroundColor: "#FFFFFF",
-  },
-  disabled: {
-    opacity: 0.45,
-  },
-  permission: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-    paddingHorizontal: Spacing.loose,
-  },
-  permissionBody: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.tight,
-  },
-  permissionTitle: {
-    ...Typography.display,
-    color: Colors.textPrimary,
-    textAlign: "center",
-    marginTop: Spacing.loose,
-  },
-  permissionText: {
-    ...Typography.bodyLarge,
-    lineHeight: 24,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  permissionBack: {
-    minHeight: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: Spacing.tight,
-  },
-  permissionBackText: {
-    ...Typography.bodyLarge,
-    color: Colors.brand,
-    fontWeight: "600",
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: "#000000",
+    },
+    overlay: {
+      flex: 1,
+      justifyContent: "space-between",
+    },
+    topBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: Spacing.default,
+    },
+    titlePill: {
+      paddingHorizontal: Spacing.default - 2,
+      paddingVertical: 7,
+      borderRadius: Radius.pill,
+      backgroundColor: SCRIM,
+    },
+    titlePillText: {
+      ...Typography.controlSmall,
+      color: "#FFFFFF",
+      fontWeight: "600",
+    },
+    roundButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: SCRIM,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    roundButtonLarge: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+    },
+    roundButtonActive: {
+      backgroundColor: Colors.brandBright,
+    },
+    roundButtonPressed: {
+      opacity: 0.7,
+    },
+    frameArea: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    frame: {
+      width: FRAME_SIZE,
+      height: FRAME_SIZE,
+      overflow: "hidden",
+    },
+    corner: {
+      position: "absolute",
+      width: CORNER,
+      height: CORNER,
+      borderColor: "#FFFFFF",
+    },
+    cornerBusy: {
+      borderColor: Colors.brandBright,
+    },
+    cornerTopLeft: {
+      top: 0,
+      left: 0,
+      borderTopWidth: CORNER_WIDTH,
+      borderLeftWidth: CORNER_WIDTH,
+      borderTopLeftRadius: 18,
+    },
+    cornerTopRight: {
+      top: 0,
+      right: 0,
+      borderTopWidth: CORNER_WIDTH,
+      borderRightWidth: CORNER_WIDTH,
+      borderTopRightRadius: 18,
+    },
+    cornerBottomLeft: {
+      bottom: 0,
+      left: 0,
+      borderBottomWidth: CORNER_WIDTH,
+      borderLeftWidth: CORNER_WIDTH,
+      borderBottomLeftRadius: 18,
+    },
+    cornerBottomRight: {
+      bottom: 0,
+      right: 0,
+      borderBottomWidth: CORNER_WIDTH,
+      borderRightWidth: CORNER_WIDTH,
+      borderBottomRightRadius: 18,
+    },
+    scanLine: {
+      top: 12,
+      left: 14,
+      right: 14,
+    },
+    bottom: {
+      paddingHorizontal: Spacing.default,
+      gap: Spacing.loose,
+    },
+    message: {
+      alignSelf: "center",
+      backgroundColor: SCRIM,
+      borderRadius: Radius.pill,
+      paddingHorizontal: Spacing.default,
+      paddingVertical: Spacing.tight,
+      maxWidth: "92%",
+    },
+    messageFailed: {
+      backgroundColor: "rgba(208, 64, 43, 0.9)",
+      borderRadius: Radius.md,
+    },
+    messageText: {
+      ...Typography.caption1,
+      fontWeight: "500",
+      color: "#FFFFFF",
+      textAlign: "center",
+    },
+    controls: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: Spacing.loose,
+    },
+    controlSpacer: {
+      width: 56,
+    },
+    shutter: {
+      width: 82,
+      height: 82,
+      borderRadius: 41,
+      borderWidth: 4,
+      borderColor: "#FFFFFF",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    shutterPressed: {
+      transform: [{ scale: 0.94 }],
+    },
+    shutterInner: {
+      width: 66,
+      height: 66,
+      borderRadius: 33,
+      backgroundColor: "#FFFFFF",
+    },
+    disabled: {
+      opacity: 0.45,
+    },
+    permission: {
+      flex: 1,
+      backgroundColor: Colors.bg,
+      paddingHorizontal: Spacing.loose,
+    },
+    permissionBody: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: Spacing.tight,
+    },
+    permissionTitle: {
+      ...Typography.display,
+      color: Colors.textPrimary,
+      textAlign: "center",
+      marginTop: Spacing.loose,
+    },
+    permissionText: {
+      ...Typography.bodyLarge,
+      lineHeight: 24,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    permissionBack: {
+      minHeight: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: Spacing.tight,
+    },
+    permissionBackText: {
+      ...Typography.bodyLarge,
+      color: Colors.brand,
+      fontWeight: "600",
+    },
+  });

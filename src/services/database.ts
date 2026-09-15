@@ -228,6 +228,29 @@ export async function updatePlant(id: string, updates: Partial<SavedPlant>): Pro
       values.push(updates.isFavorited ? 1 : 0);
     }
 
+    // Choosing one of the other possibilities on a plant's page changes what
+    // it is. The name and its confidence move together, so the page never
+    // shows one plant's name with another's certainty.
+    if (updates.scientificName !== undefined) {
+      if (
+        updates.commonNames === undefined ||
+        updates.confidenceBand === undefined ||
+        updates.rawScore === undefined ||
+        updates.calibratedScore === undefined
+      ) {
+        throw new Error("Changing a plant's identification needs its names and confidence together.");
+      }
+
+      sets.push("scientificName = ?", "commonNames = ?", "confidenceBand = ?", "rawScore = ?", "calibratedScore = ?");
+      values.push(
+        updates.scientificName,
+        JSON.stringify(updates.commonNames),
+        updates.confidenceBand,
+        updates.rawScore,
+        updates.calibratedScore
+      );
+    }
+
     if (sets.length === 0) return;
 
     values.push(id);

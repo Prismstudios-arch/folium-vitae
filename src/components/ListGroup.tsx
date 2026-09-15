@@ -1,7 +1,8 @@
 import React, { Children, cloneElement, isValidElement, ReactElement, ReactNode } from "react";
 import { View, Text, StyleSheet, Pressable, StyleProp, ViewStyle, Switch } from "react-native";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, Radius, Spacing, Tiles, Typography } from "@constants/theme";
+import { Radius, Spacing, Tiles, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Icon } from "./Icon";
 
 /**
@@ -24,6 +25,7 @@ export function ListGroup({
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = useThemedStyles(createStyles);
   const rows = Children.toArray(children).filter(isValidElement) as ReactElement<ListRowProps>[];
 
   return (
@@ -40,6 +42,7 @@ export function ListGroup({
 }
 
 export function IconTile({ icon, color = Tiles.green, size = 30 }: { icon: SFSymbol; color?: string; size?: number }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View
       style={[
@@ -81,6 +84,8 @@ export function ListRow({
   disabled = false,
   isLast = false,
 }: ListRowProps) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const trailing =
     accessory !== undefined ? (
       accessory
@@ -129,6 +134,7 @@ export interface ListSwitchRowProps extends Omit<ListRowProps, "accessory" | "on
 
 /** A row whose trailing control is a switch. */
 export function ListSwitchRow(props: ListSwitchRowProps) {
+  const Colors = useColors();
   const { value, onValueChange, disabled, ...row } = props;
 
   return (
@@ -148,77 +154,78 @@ export function ListSwitchRow(props: ListSwitchRowProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  group: {
-    marginHorizontal: Spacing.default,
-    marginBottom: Spacing.loose,
-  },
-  groupTitle: {
-    ...Typography.overline,
-    color: Colors.textSecondary,
-    marginLeft: Spacing.default,
-    marginBottom: Spacing.tight,
-  },
-  groupFooter: {
-    ...Typography.caption2,
-    color: Colors.textSecondary,
-    marginHorizontal: Spacing.default,
-    marginTop: Spacing.tight,
-  },
-  card: {
-    backgroundColor: Colors.card,
-    borderRadius: Radius.md + 2,
-    overflow: "hidden",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingLeft: Spacing.default,
-    gap: Spacing.default - 4,
-    minHeight: 52,
-    backgroundColor: Colors.card,
-  },
-  rowPressed: {
-    backgroundColor: "#EEF1EF",
-  },
-  rowDisabled: {
-    opacity: 0.5,
-  },
-  tile: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rowBody: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.tight,
-    paddingVertical: 11,
-    paddingRight: Spacing.default,
-    alignSelf: "stretch",
-  },
-  rowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.separator,
-  },
-  rowText: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  rowTitle: {
-    ...Typography.bodyLarge,
-    color: Colors.textPrimary,
-  },
-  rowTitleDestructive: {
-    color: Colors.error,
-  },
-  rowSubtitle: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: 1,
-  },
-  rowValue: {
-    ...Typography.bodyLarge,
-    color: Colors.textSecondary,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    group: {
+      marginHorizontal: Spacing.default,
+      marginBottom: Spacing.loose,
+    },
+    groupTitle: {
+      ...Typography.overline,
+      color: Colors.textSecondary,
+      marginLeft: Spacing.default,
+      marginBottom: Spacing.tight,
+    },
+    groupFooter: {
+      ...Typography.caption2,
+      color: Colors.textSecondary,
+      marginHorizontal: Spacing.default,
+      marginTop: Spacing.tight,
+    },
+    card: {
+      backgroundColor: Colors.card,
+      borderRadius: Radius.md + 2,
+      overflow: "hidden",
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingLeft: Spacing.default,
+      gap: Spacing.default - 4,
+      minHeight: 52,
+      backgroundColor: Colors.card,
+    },
+    rowPressed: {
+      backgroundColor: Colors.fill,
+    },
+    rowDisabled: {
+      opacity: 0.5,
+    },
+    tile: {
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    rowBody: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: Spacing.tight,
+      paddingVertical: 11,
+      paddingRight: Spacing.default,
+      alignSelf: "stretch",
+    },
+    rowDivider: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: Colors.separator,
+    },
+    rowText: {
+      flex: 1,
+      justifyContent: "center",
+    },
+    rowTitle: {
+      ...Typography.bodyLarge,
+      color: Colors.textPrimary,
+    },
+    rowTitleDestructive: {
+      color: Colors.error,
+    },
+    rowSubtitle: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      marginTop: 1,
+    },
+    rowValue: {
+      ...Typography.bodyLarge,
+      color: Colors.textSecondary,
+    },
+  });

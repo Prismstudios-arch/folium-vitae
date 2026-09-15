@@ -3,7 +3,8 @@ import { useCallback, useState } from "react";
 import { useRouter, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, Radius, Shadow, Spacing, Tiles, Typography } from "@constants/theme";
+import { Radius, Shadow, Spacing, Tiles, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Button } from "@components/Button";
 import { HeroCard } from "@components/HeroCard";
 import { Icon } from "@components/Icon";
@@ -27,6 +28,8 @@ function greeting(date = new Date()): string {
  * plant app wants.
  */
 export default function HomeScreen() {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const { plants, loadPlants } = usePlants();
   const [quota, setQuota] = useState<QuotaState | null>(null);
@@ -167,6 +170,8 @@ export default function HomeScreen() {
 }
 
 function QuotaLine({ quota }: { quota: QuotaState | null }) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   if (!quota) return null;
 
   const text =
@@ -185,6 +190,7 @@ function QuotaLine({ quota }: { quota: QuotaState | null }) {
 }
 
 function Stat({ icon, color, value, label }: { icon: SFSymbol; color: string; value: number; label: string }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.stat}>
       <IconTile icon={icon} color={color} size={28} />
@@ -195,6 +201,8 @@ function Stat({ icon, color, value, label }: { icon: SFSymbol; color: string; va
 }
 
 function PlantCard({ plant, onPress }: { plant: SavedPlant; onPress: () => void }) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const photo = getMostRecentPhoto(plant);
 
   return (
@@ -219,193 +227,194 @@ function PlantCard({ plant, onPress }: { plant: SavedPlant; onPress: () => void 
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  content: {
-    paddingBottom: Spacing.extra,
-  },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.tight,
-  },
-  brand: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.tight,
-  },
-  brandMark: {
-    width: 30,
-    height: 30,
-  },
-  brandName: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  greeting: {
-    ...Typography.displayLarge,
-    color: Colors.textPrimary,
-    paddingHorizontal: Spacing.default,
-    marginTop: Spacing.default,
-    marginBottom: Spacing.default,
-  },
-  hero: {
-    marginHorizontal: Spacing.default,
-  },
-  heroOverline: {
-    ...Typography.overline,
-    color: Colors.brandBright,
-  },
-  heroTitle: {
-    fontSize: 32,
-    lineHeight: 37,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-    color: "#FFFFFF",
-    marginTop: Spacing.compact,
-  },
-  heroBody: {
-    ...Typography.body,
-    color: "rgba(255, 255, 255, 0.8)",
-    marginTop: Spacing.tight,
-  },
-  heroButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    gap: Spacing.tight,
-    marginTop: Spacing.loose,
-    paddingHorizontal: Spacing.loose,
-    height: 50,
-    borderRadius: Radius.pill,
-    backgroundColor: "#FFFFFF",
-  },
-  heroButtonPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
-  },
-  heroButtonText: {
-    ...Typography.button,
-    color: Colors.brandDeep,
-  },
-  quota: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: Spacing.default,
-    maxWidth: "70%",
-  },
-  quotaText: {
-    ...Typography.caption2,
-    color: "rgba(255, 255, 255, 0.75)",
-    flexShrink: 1,
-  },
-  stats: {
-    flexDirection: "row",
-    gap: Spacing.tight + 2,
-    marginHorizontal: Spacing.default,
-    marginTop: Spacing.default,
-  },
-  stat: {
-    flex: 1,
-    padding: Spacing.default - 2,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.card,
-    gap: 6,
-  },
-  statValue: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    fontVariant: ["tabular-nums"],
-    marginTop: 2,
-  },
-  statLabel: {
-    ...Typography.caption2,
-    color: Colors.textSecondary,
-  },
-  group: {
-    marginTop: Spacing.loose,
-    marginBottom: 0,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.default,
-    marginTop: Spacing.spacious,
-    marginBottom: Spacing.default - 4,
-  },
-  sectionTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-  },
-  link: {
-    ...Typography.bodyLarge,
-    color: Colors.brand,
-    fontWeight: "600",
-  },
-  emptyCard: {
-    marginHorizontal: Spacing.default,
-    padding: Spacing.loose,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.card,
-    alignItems: "center",
-    gap: Spacing.tight,
-  },
-  emptyTitle: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-    marginTop: Spacing.tight,
-  },
-  emptyBody: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  emptyButton: {
-    alignSelf: "stretch",
-    marginTop: Spacing.tight,
-  },
-  carousel: {
-    paddingHorizontal: Spacing.default,
-    gap: Spacing.default - 4,
-  },
-  plantCard: {
-    width: 148,
-    height: 196,
-    borderRadius: Radius.lg,
-    overflow: "hidden",
-    backgroundColor: Colors.separator,
-    justifyContent: "flex-end",
-    ...Shadow.card,
-  },
-  plantCardPressed: {
-    transform: [{ scale: 0.98 }],
-  },
-  plantCardPlaceholder: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.brandTint,
-  },
-  plantCardFade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: "55%",
-  },
-  plantCardName: {
-    ...Typography.subheadline,
-    color: "#FFFFFF",
-    padding: Spacing.default - 4,
-  },
-  toolsGroup: {
-    marginTop: Spacing.spacious,
-    marginBottom: 0,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Colors.bg,
+    },
+    content: {
+      paddingBottom: Spacing.extra,
+    },
+    topBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: Spacing.default,
+      paddingTop: Spacing.tight,
+    },
+    brand: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: Spacing.tight,
+    },
+    brandMark: {
+      width: 30,
+      height: 30,
+    },
+    brandName: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+    },
+    greeting: {
+      ...Typography.displayLarge,
+      color: Colors.textPrimary,
+      paddingHorizontal: Spacing.default,
+      marginTop: Spacing.default,
+      marginBottom: Spacing.default,
+    },
+    hero: {
+      marginHorizontal: Spacing.default,
+    },
+    heroOverline: {
+      ...Typography.overline,
+      color: Colors.brandBright,
+    },
+    heroTitle: {
+      fontSize: 32,
+      lineHeight: 37,
+      fontWeight: "800",
+      letterSpacing: -0.3,
+      color: "#FFFFFF",
+      marginTop: Spacing.compact,
+    },
+    heroBody: {
+      ...Typography.body,
+      color: "rgba(255, 255, 255, 0.8)",
+      marginTop: Spacing.tight,
+    },
+    heroButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      gap: Spacing.tight,
+      marginTop: Spacing.loose,
+      paddingHorizontal: Spacing.loose,
+      height: 50,
+      borderRadius: Radius.pill,
+      backgroundColor: "#FFFFFF",
+    },
+    heroButtonPressed: {
+      opacity: 0.85,
+      transform: [{ scale: 0.98 }],
+    },
+    heroButtonText: {
+      ...Typography.button,
+      color: Colors.brandDeep,
+    },
+    quota: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: Spacing.default,
+      maxWidth: "70%",
+    },
+    quotaText: {
+      ...Typography.caption2,
+      color: "rgba(255, 255, 255, 0.75)",
+      flexShrink: 1,
+    },
+    stats: {
+      flexDirection: "row",
+      gap: Spacing.tight + 2,
+      marginHorizontal: Spacing.default,
+      marginTop: Spacing.default,
+    },
+    stat: {
+      flex: 1,
+      padding: Spacing.default - 2,
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.card,
+      gap: 6,
+    },
+    statValue: {
+      ...Typography.headline,
+      color: Colors.textPrimary,
+      fontVariant: ["tabular-nums"],
+      marginTop: 2,
+    },
+    statLabel: {
+      ...Typography.caption2,
+      color: Colors.textSecondary,
+    },
+    group: {
+      marginTop: Spacing.loose,
+      marginBottom: 0,
+    },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      justifyContent: "space-between",
+      paddingHorizontal: Spacing.default,
+      marginTop: Spacing.spacious,
+      marginBottom: Spacing.default - 4,
+    },
+    sectionTitle: {
+      ...Typography.headline,
+      color: Colors.textPrimary,
+    },
+    link: {
+      ...Typography.bodyLarge,
+      color: Colors.brand,
+      fontWeight: "600",
+    },
+    emptyCard: {
+      marginHorizontal: Spacing.default,
+      padding: Spacing.loose,
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.card,
+      alignItems: "center",
+      gap: Spacing.tight,
+    },
+    emptyTitle: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+      marginTop: Spacing.tight,
+    },
+    emptyBody: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    emptyButton: {
+      alignSelf: "stretch",
+      marginTop: Spacing.tight,
+    },
+    carousel: {
+      paddingHorizontal: Spacing.default,
+      gap: Spacing.default - 4,
+    },
+    plantCard: {
+      width: 148,
+      height: 196,
+      borderRadius: Radius.lg,
+      overflow: "hidden",
+      backgroundColor: Colors.separator,
+      justifyContent: "flex-end",
+      ...Shadow.card,
+    },
+    plantCardPressed: {
+      transform: [{ scale: 0.98 }],
+    },
+    plantCardPlaceholder: {
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: Colors.brandTint,
+    },
+    plantCardFade: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: "55%",
+    },
+    plantCardName: {
+      ...Typography.subheadline,
+      color: "#FFFFFF",
+      padding: Spacing.default - 4,
+    },
+    toolsGroup: {
+      marginTop: Spacing.spacious,
+      marginBottom: 0,
+    },
+  });

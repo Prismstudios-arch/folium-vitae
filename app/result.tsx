@@ -2,13 +2,17 @@ import { View, Text, StyleSheet, Image, ScrollView, Pressable, ActivityIndicator
 import { useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { Colors, Radius, Shadow, Spacing, Tiles, Typography } from "@constants/theme";
+import { Radius, Shadow, Spacing, Tiles, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Button } from "@components/Button";
 import { CareCard } from "@components/CareCard";
 import { ConfidenceMeter } from "@components/ConfidenceMeter";
 import { Icon } from "@components/Icon";
 import { IconTile } from "@components/ListGroup";
 import { ScreenHeader, HeaderIconButton } from "@components/ScreenHeader";
+import { ScanSweep } from "@components/ScanSweep";
+import { selectionFeedback } from "@utils/feedback";
+import { formatCommonName } from "@utils/plantNames";
 import { useIdentification } from "@hooks/useIdentification";
 import { useGoBack } from "@hooks/useGoBack";
 import { getCapture, toIdentificationImage } from "@services/capture";
@@ -20,8 +24,11 @@ import { ErrorCode } from "@services/apiClient";
 import { ConfidenceBand, Species, getToxicityText } from "@domain/plant";
 
 const MAX_CANDIDATES = 3;
+const PHOTO_HEIGHT = 360;
 
 export default function ResultScreen() {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const params = useLocalSearchParams<{ imageHash?: string }>();
   const capture = params.imageHash ? getCapture(params.imageHash) : undefined;
@@ -164,7 +171,17 @@ export default function ResultScreen() {
       {header}
 
       {/* DESIGN.md: the photo is the hero. Full width, no card. */}
-      {capture ? <Image source={{ uri: capture.uri }} style={styles.photo} resizeMode="cover" /> : null}
+      {capture ? (
+        <View style={styles.photoWrap}>
+          <Image source={{ uri: capture.uri }} style={styles.photo} resizeMode="cover" />
+          {identifying && !result ? (
+            <>
+              <View style={styles.photoScrim} pointerEvents="none" />
+              <ScanSweep travel={PHOTO_HEIGHT - 80} style={styles.photoSweep} />
+            </>
+          ) : null}
+        </View>
+      ) : null}
 
       <View style={[styles.sheet, !capture && styles.sheetNoPhoto]}>
         {identifying && !result ? (
@@ -332,6 +349,8 @@ function Candidates({
   selectedIndex: number;
   onSelect: (index: number) => void;
 }) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <View>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -342,7 +361,10 @@ function Candidates({
           return (
             <Pressable
               key={candidate.id}
-              onPress={() => onSelect(index)}
+              onPress={() => {
+                if (!selected) selectionFeedback();
+                onSelect(index);
+              }}
               style={({ pressed }) => [styles.candidate, selected && styles.candidateSelected, pressed && styles.pressed]}
               accessibilityRole="radio"
               accessibilityState={{ checked: selected }}
@@ -374,7 +396,7 @@ function hasCommonName(species: Species): boolean {
 }
 
 function displayName(species: Species): string {
-  return hasCommonName(species) ? species.commonNames[0] : species.scientificName;
+  return hasCommonName(species) ? formatCommonName(species.commonNames[0]) : species.scientificName;
 }
 
 function explainBand(band: ConfidenceBand): string {
@@ -388,252 +410,269 @@ function explainBand(band: ConfidenceBand): string {
   }
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  scrollContent: {
-    paddingBottom: Spacing.extra,
-  },
-  centred: {
-    flex: 1,
-    justifyContent: "center",
-    padding: Spacing.default,
-  },
-  stateCard: {
-    alignItems: "center",
-    padding: Spacing.loose,
-    borderRadius: Radius.xl,
-    backgroundColor: Colors.card,
-    gap: Spacing.tight,
-  },
-  stateTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    textAlign: "center",
-    marginTop: Spacing.tight,
-  },
-  stateBody: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  stateButton: {
-    alignSelf: "stretch",
-    marginTop: Spacing.default,
-  },
-  photo: {
-    width: "100%",
-    height: 360,
-    backgroundColor: Colors.separator,
-  },
-  sheet: {
-    marginTop: -28,
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
-    backgroundColor: Colors.bg,
-    paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.default,
-  },
-  sheetNoPhoto: {
-    marginTop: 0,
-  },
-  card: {
-    alignItems: "center",
-    padding: Spacing.loose,
-    borderRadius: Radius.xl,
-    backgroundColor: Colors.card,
-    gap: Spacing.tight,
-    ...Shadow.card,
-  },
-  cardTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    textAlign: "center",
-    marginTop: Spacing.tight,
-  },
-  cardBody: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  cardFine: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-  },
-  cardButton: {
-    alignSelf: "stretch",
-    marginTop: Spacing.default,
-  },
-  cardButtonTight: {
-    alignSelf: "stretch",
-    marginTop: Spacing.compact,
-  },
-  summary: {
-    padding: Spacing.loose,
-    borderRadius: Radius.xl,
-    backgroundColor: Colors.card,
-    ...Shadow.card,
-  },
-  overline: {
-    ...Typography.overline,
-    color: Colors.brand,
-  },
-  name: {
-    ...Typography.displayLarge,
-    color: Colors.textPrimary,
-    marginTop: 2,
-  },
-  scientific: {
-    ...Typography.bodyLarge,
-    color: Colors.textSecondary,
-    fontStyle: "italic",
-    marginTop: 2,
-  },
-  meter: {
-    marginTop: Spacing.loose,
-  },
-  summaryTitle: {
-    ...Typography.display,
-    color: Colors.textPrimary,
-    marginTop: Spacing.default,
-  },
-  summaryBody: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-    marginTop: Spacing.default - 4,
-  },
-  sectionTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    marginTop: Spacing.spacious,
-    marginBottom: Spacing.default - 4,
-  },
-  caveat: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: -4,
-    marginBottom: Spacing.default - 4,
-  },
-  toxicity: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: Spacing.default - 4,
-    marginTop: Spacing.default,
-    padding: Spacing.default,
-    borderRadius: Radius.lg,
-    backgroundColor: "#FDF0E8",
-  },
-  toxicityText: {
-    flex: 1,
-  },
-  toxicityTitle: {
-    ...Typography.subheadline,
-    color: Colors.toxicity,
-  },
-  toxicityBody: {
-    ...Typography.body,
-    color: Colors.textPrimary,
-    marginTop: Spacing.compact,
-  },
-  toxicityFine: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: Spacing.tight,
-  },
-  noCare: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.default - 4,
-    padding: Spacing.default,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.card,
-  },
-  noCareText: {
-    flex: 1,
-  },
-  noCareTitle: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  noCareBody: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  candidates: {
-    gap: Spacing.tight,
-  },
-  candidate: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.default - 4,
-    minHeight: 64,
-    paddingHorizontal: Spacing.default,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.card,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  candidateSelected: {
-    borderColor: Colors.brand,
-  },
-  pressed: {
-    opacity: 0.85,
-  },
-  rank: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: Colors.bg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rankSelected: {
-    backgroundColor: Colors.brandTint,
-  },
-  rankText: {
-    ...Typography.caption1,
-    fontWeight: "700",
-    color: Colors.textSecondary,
-  },
-  rankTextSelected: {
-    color: Colors.brandDark,
-  },
-  candidateText: {
-    flex: 1,
-    paddingVertical: Spacing.tight + 2,
-  },
-  candidateName: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  candidateScientific: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    fontStyle: "italic",
-    marginTop: 1,
-  },
-  candidateScore: {
-    ...Typography.caption1,
-    fontWeight: "600",
-    color: Colors.textSecondary,
-    fontVariant: ["tabular-nums"],
-  },
-  actions: {
-    marginTop: Spacing.spacious,
-  },
-  homeLink: {
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: Spacing.default,
-  },
-  homeLinkText: {
-    ...Typography.controlSmall,
-    color: Colors.textSecondary,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Colors.bg,
+    },
+    scrollContent: {
+      paddingBottom: Spacing.extra,
+    },
+    centred: {
+      flex: 1,
+      justifyContent: "center",
+      padding: Spacing.default,
+    },
+    stateCard: {
+      alignItems: "center",
+      padding: Spacing.loose,
+      borderRadius: Radius.xl,
+      backgroundColor: Colors.card,
+      gap: Spacing.tight,
+    },
+    stateTitle: {
+      ...Typography.headline,
+      color: Colors.textPrimary,
+      textAlign: "center",
+      marginTop: Spacing.tight,
+    },
+    stateBody: {
+      ...Typography.body,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    stateButton: {
+      alignSelf: "stretch",
+      marginTop: Spacing.default,
+    },
+    photoWrap: {
+      height: PHOTO_HEIGHT,
+    },
+    photo: {
+      width: "100%",
+      height: PHOTO_HEIGHT,
+      backgroundColor: Colors.separator,
+    },
+    photoScrim: {
+      position: "absolute",
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      backgroundColor: "rgba(6, 42, 30, 0.28)",
+    },
+    photoSweep: {
+      top: 24,
+      left: 24,
+      right: 24,
+    },
+    sheet: {
+      marginTop: -28,
+      borderTopLeftRadius: Radius.xl,
+      borderTopRightRadius: Radius.xl,
+      backgroundColor: Colors.bg,
+      paddingHorizontal: Spacing.default,
+      paddingTop: Spacing.default,
+    },
+    sheetNoPhoto: {
+      marginTop: 0,
+    },
+    card: {
+      alignItems: "center",
+      padding: Spacing.loose,
+      borderRadius: Radius.xl,
+      backgroundColor: Colors.card,
+      gap: Spacing.tight,
+      ...Shadow.card,
+    },
+    cardTitle: {
+      ...Typography.headline,
+      color: Colors.textPrimary,
+      textAlign: "center",
+      marginTop: Spacing.tight,
+    },
+    cardBody: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    cardFine: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+    },
+    cardButton: {
+      alignSelf: "stretch",
+      marginTop: Spacing.default,
+    },
+    cardButtonTight: {
+      alignSelf: "stretch",
+      marginTop: Spacing.compact,
+    },
+    summary: {
+      padding: Spacing.loose,
+      borderRadius: Radius.xl,
+      backgroundColor: Colors.card,
+      ...Shadow.card,
+    },
+    overline: {
+      ...Typography.overline,
+      color: Colors.brand,
+    },
+    name: {
+      ...Typography.displayLarge,
+      color: Colors.textPrimary,
+      marginTop: 2,
+    },
+    scientific: {
+      ...Typography.bodyLarge,
+      color: Colors.textSecondary,
+      fontStyle: "italic",
+      marginTop: 2,
+    },
+    meter: {
+      marginTop: Spacing.loose,
+    },
+    summaryTitle: {
+      ...Typography.display,
+      color: Colors.textPrimary,
+      marginTop: Spacing.default,
+    },
+    summaryBody: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textSecondary,
+      marginTop: Spacing.default - 4,
+    },
+    sectionTitle: {
+      ...Typography.headline,
+      color: Colors.textPrimary,
+      marginTop: Spacing.spacious,
+      marginBottom: Spacing.default - 4,
+    },
+    caveat: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      marginTop: -4,
+      marginBottom: Spacing.default - 4,
+    },
+    toxicity: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: Spacing.default - 4,
+      marginTop: Spacing.default,
+      padding: Spacing.default,
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.toxicityTint,
+    },
+    toxicityText: {
+      flex: 1,
+    },
+    toxicityTitle: {
+      ...Typography.subheadline,
+      color: Colors.toxicity,
+    },
+    toxicityBody: {
+      ...Typography.body,
+      color: Colors.textPrimary,
+      marginTop: Spacing.compact,
+    },
+    toxicityFine: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      marginTop: Spacing.tight,
+    },
+    noCare: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: Spacing.default - 4,
+      padding: Spacing.default,
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.card,
+    },
+    noCareText: {
+      flex: 1,
+    },
+    noCareTitle: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+    },
+    noCareBody: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      marginTop: 2,
+    },
+    candidates: {
+      gap: Spacing.tight,
+    },
+    candidate: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: Spacing.default - 4,
+      minHeight: 64,
+      paddingHorizontal: Spacing.default,
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.card,
+      borderWidth: 2,
+      borderColor: "transparent",
+    },
+    candidateSelected: {
+      borderColor: Colors.brand,
+    },
+    pressed: {
+      opacity: 0.85,
+    },
+    rank: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: Colors.bg,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    rankSelected: {
+      backgroundColor: Colors.brandTint,
+    },
+    rankText: {
+      ...Typography.caption1,
+      fontWeight: "700",
+      color: Colors.textSecondary,
+    },
+    rankTextSelected: {
+      color: Colors.brandDark,
+    },
+    candidateText: {
+      flex: 1,
+      paddingVertical: Spacing.tight + 2,
+    },
+    candidateName: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+    },
+    candidateScientific: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      fontStyle: "italic",
+      marginTop: 1,
+    },
+    candidateScore: {
+      ...Typography.caption1,
+      fontWeight: "600",
+      color: Colors.textSecondary,
+      fontVariant: ["tabular-nums"],
+    },
+    actions: {
+      marginTop: Spacing.spacious,
+    },
+    homeLink: {
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: Spacing.default,
+    },
+    homeLinkText: {
+      ...Typography.controlSmall,
+      color: Colors.textSecondary,
+    },
+  });

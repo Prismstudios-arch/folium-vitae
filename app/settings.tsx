@@ -2,7 +2,19 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Share, ActivityIn
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
-import { Colors, Radius, Spacing, Tiles, Typography } from "@constants/theme";
+import {
+  AppearancePreference,
+  BrandColors,
+  DarkColors,
+  LightColors,
+  Radius,
+  Spacing,
+  Tiles,
+  Typography,
+  type Palette,
+} from "@constants/theme";
+import { selectionFeedback } from "@utils/feedback";
+import { useColors, useTheme, useThemedStyles } from "@hooks/useTheme";
 import { SUPPORT_EMAIL, MANAGE_SUBSCRIPTION_URL } from "@constants/config";
 import { HeroCard } from "@components/HeroCard";
 import { Icon } from "@components/Icon";
@@ -19,10 +31,13 @@ import {
 import { useGoBack } from "@hooks/useGoBack";
 
 export default function SettingsScreen() {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const goBack = useGoBack("/");
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
   const [busy, setBusy] = useState(false);
+  const { preference, setPreference } = useTheme();
 
   useEffect(() => {
     getUserPreferences()
@@ -30,14 +45,23 @@ export default function SettingsScreen() {
       .catch((error) => console.error("Failed to load preferences:", error));
   }, []);
 
-  const update = async (changes: Partial<UserPreferences>) => {
-    if (!prefs) return;
+  const update = async (changes: Partial<UserPreferences>): Promise<boolean> => {
+    if (!prefs) return false;
     try {
       await saveUserPreferences(changes);
-      setPrefs({ ...prefs, ...changes });
+      setPrefs((current) => (current ? { ...current, ...changes } : current));
+      return true;
     } catch {
       Alert.alert("Couldn't save", "That setting didn't change. Try again.");
+      return false;
     }
+  };
+
+  /** Applied at once so the choice can be seen, and put back if it couldn't be saved. */
+  const handleAppearance = async (appearance: AppearancePreference) => {
+    const previous = preference;
+    setPreference(appearance);
+    if (!(await update({ appearance }))) setPreference(previous);
   };
 
   /**
@@ -215,6 +239,10 @@ export default function SettingsScreen() {
         />
       </ListGroup>
 
+      <ListGroup title="Appearance">
+        <AppearancePicker value={preference} onChange={handleAppearance} />
+      </ListGroup>
+
       <ListGroup title="Preferences" footer="Units set temperatures in care notes. Hemisphere works out which season your plants are in.">
         <ListRow
           icon="thermometer.medium"
@@ -325,6 +353,7 @@ function Segmented<T extends string>({
   value: T;
   onChange: (value: T) => void;
 }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.segmented} accessibilityRole="radiogroup">
       {options.map((option) => {
@@ -332,7 +361,11 @@ function Segmented<T extends string>({
         return (
           <Pressable
             key={option.value}
-            onPress={() => onChange(option.value)}
+            onPress={() => {
+              if (selected) return;
+              selectionFeedback();
+              onChange(option.value);
+            }}
             style={[styles.segment, selected && styles.segmentSelected]}
             accessibilityRole="radio"
             accessibilityState={{ checked: selected }}
@@ -345,115 +378,267 @@ function Segmented<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  content: {
-    paddingBottom: Spacing.extra,
-  },
-  loading: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  premium: {
-    marginHorizontal: Spacing.default,
-    marginBottom: Spacing.loose,
-  },
-  pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.99 }],
-  },
-  premiumContent: {
-    paddingVertical: Spacing.loose,
-  },
-  premiumRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  premiumText: {
-    flex: 1,
-    paddingRight: 110,
-  },
-  premiumBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.brandBright,
-  },
-  premiumBadgeText: {
-    ...Typography.caption2,
-    fontWeight: "700",
-    color: Colors.brandDeep,
-  },
-  premiumTitle: {
-    ...Typography.headline,
-    color: "#FFFFFF",
-    marginTop: Spacing.tight,
-  },
-  premiumBody: {
-    ...Typography.caption1,
-    color: "rgba(255, 255, 255, 0.8)",
-    marginTop: 2,
-  },
-  segmented: {
-    flexDirection: "row",
-    padding: 2,
-    borderRadius: 9,
-    backgroundColor: Colors.bg,
-  },
-  segment: {
-    minWidth: 56,
-    height: 30,
-    paddingHorizontal: Spacing.tight,
-    borderRadius: 7,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  segmentSelected: {
-    backgroundColor: Colors.card,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  segmentText: {
-    ...Typography.caption1,
-    fontWeight: "500",
-    color: Colors.textSecondary,
-  },
-  segmentTextSelected: {
-    color: Colors.textPrimary,
-    fontWeight: "600",
-  },
-  footer: {
-    alignItems: "center",
-    paddingHorizontal: Spacing.spacious,
-    marginTop: Spacing.default,
-    gap: Spacing.tight,
-  },
-  footerMark: {
-    width: 44,
-    height: 44,
-  },
-  footerName: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  footerText: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  busy: {
-    marginTop: Spacing.default,
-  },
-});
+const APPEARANCES: Array<{ value: AppearancePreference; label: string; accessibilityLabel: string }> = [
+  { value: "system", label: "Automatic", accessibilityLabel: "Automatic, matches your phone" },
+  { value: "light", label: "Light", accessibilityLabel: "Light" },
+  { value: "dark", label: "Dark", accessibilityLabel: "Dark" },
+];
+
+const PREVIEW_WIDTH = 64;
+const PREVIEW_HEIGHT = 92;
+
+/** Three miniature screens, the way iOS offers Light and Dark in Display & Brightness. */
+function AppearancePicker({
+  value,
+  onChange,
+}: {
+  value: AppearancePreference;
+  onChange: (value: AppearancePreference) => void;
+}) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
+
+  return (
+    <View style={styles.appearance} accessibilityRole="radiogroup">
+      {APPEARANCES.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => {
+              if (selected) return;
+              selectionFeedback();
+              onChange(option.value);
+            }}
+            style={({ pressed }) => [styles.appearanceOption, pressed && styles.appearancePressed]}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected }}
+            accessibilityLabel={option.accessibilityLabel}
+          >
+            <View style={[styles.preview, selected && styles.previewSelected]}>
+              {option.value === "system" ? (
+                // Half light, half dark: it follows the phone.
+                <>
+                  <View style={styles.previewHalf}>
+                    <MiniScreen palette={LightColors} />
+                  </View>
+                  <View style={styles.previewHalf}>
+                    <MiniScreen palette={DarkColors} rightHalf />
+                  </View>
+                </>
+              ) : (
+                <MiniScreen palette={option.value === "dark" ? DarkColors : LightColors} />
+              )}
+            </View>
+            <Text style={[styles.appearanceLabel, selected && styles.appearanceLabelSelected]}>{option.label}</Text>
+            <Icon
+              name={selected ? "checkmark.circle.fill" : "circle"}
+              size={20}
+              color={selected ? Colors.brand : Colors.textDisabled}
+            />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** A tiny screen drawn in one palette: the emerald hero, then two list rows. */
+function MiniScreen({ palette, rightHalf = false }: { palette: Palette; rightHalf?: boolean }) {
+  const styles = useThemedStyles(createStyles);
+
+  return (
+    <View style={[styles.mini, { backgroundColor: palette.bg, left: rightHalf ? -PREVIEW_WIDTH / 2 : 0 }]}>
+      <View style={[styles.miniHero, { backgroundColor: BrandColors.brandLit }]} />
+      {[palette.brand, Tiles.blue].map((tile) => (
+        <View key={tile} style={[styles.miniRow, { backgroundColor: palette.card }]}>
+          <View style={[styles.miniTile, { backgroundColor: tile }]} />
+          <View style={[styles.miniLine, { backgroundColor: palette.separator }]} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Colors.bg,
+    },
+    content: {
+      paddingBottom: Spacing.extra,
+    },
+    loading: {
+      flex: 1,
+      backgroundColor: Colors.bg,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    premium: {
+      marginHorizontal: Spacing.default,
+      marginBottom: Spacing.loose,
+    },
+    pressed: {
+      opacity: 0.9,
+      transform: [{ scale: 0.99 }],
+    },
+    premiumContent: {
+      paddingVertical: Spacing.loose,
+    },
+    premiumRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    premiumText: {
+      flex: 1,
+      paddingRight: 110,
+    },
+    premiumBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: Radius.pill,
+      backgroundColor: Colors.brandBright,
+    },
+    premiumBadgeText: {
+      ...Typography.caption2,
+      fontWeight: "700",
+      color: Colors.brandDeep,
+    },
+    premiumTitle: {
+      ...Typography.headline,
+      color: "#FFFFFF",
+      marginTop: Spacing.tight,
+    },
+    premiumBody: {
+      ...Typography.caption1,
+      color: "rgba(255, 255, 255, 0.8)",
+      marginTop: 2,
+    },
+    segmented: {
+      flexDirection: "row",
+      padding: 2,
+      borderRadius: 9,
+      backgroundColor: Colors.fill,
+    },
+    segment: {
+      minWidth: 56,
+      height: 30,
+      paddingHorizontal: Spacing.tight,
+      borderRadius: 7,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    segmentSelected: {
+      backgroundColor: Colors.elevated,
+      shadowColor: "#000",
+      shadowOpacity: 0.12,
+      shadowRadius: 3,
+      shadowOffset: { width: 0, height: 1 },
+      elevation: 1,
+    },
+    segmentText: {
+      ...Typography.caption1,
+      fontWeight: "500",
+      color: Colors.textSecondary,
+    },
+    segmentTextSelected: {
+      color: Colors.textPrimary,
+      fontWeight: "600",
+    },
+    footer: {
+      alignItems: "center",
+      paddingHorizontal: Spacing.spacious,
+      marginTop: Spacing.default,
+      gap: Spacing.tight,
+    },
+    footerMark: {
+      width: 44,
+      height: 44,
+    },
+    footerName: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+    },
+    footerText: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    busy: {
+      marginTop: Spacing.default,
+    },
+    appearance: {
+      flexDirection: "row",
+      justifyContent: "space-around",
+      paddingVertical: Spacing.default,
+      paddingHorizontal: Spacing.tight,
+    },
+    appearanceOption: {
+      alignItems: "center",
+      gap: Spacing.tight,
+      minWidth: 80,
+    },
+    appearancePressed: {
+      opacity: 0.7,
+    },
+    preview: {
+      width: PREVIEW_WIDTH + 4,
+      height: PREVIEW_HEIGHT + 4,
+      borderRadius: 14,
+      borderWidth: 2,
+      borderColor: Colors.separator,
+      overflow: "hidden",
+      flexDirection: "row",
+    },
+    previewSelected: {
+      borderColor: Colors.brand,
+    },
+    previewHalf: {
+      width: PREVIEW_WIDTH / 2,
+      height: PREVIEW_HEIGHT,
+      overflow: "hidden",
+    },
+    mini: {
+      position: "absolute",
+      top: 0,
+      width: PREVIEW_WIDTH,
+      height: PREVIEW_HEIGHT,
+      padding: 6,
+      gap: 5,
+    },
+    miniHero: {
+      height: 28,
+      borderRadius: 5,
+    },
+    miniRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      height: 19,
+      paddingHorizontal: 5,
+      borderRadius: 4,
+    },
+    miniTile: {
+      width: 8,
+      height: 8,
+      borderRadius: 2,
+    },
+    miniLine: {
+      flex: 1,
+      height: 3,
+      borderRadius: 2,
+    },
+    appearanceLabel: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+    },
+    appearanceLabelSelected: {
+      color: Colors.textPrimary,
+      fontWeight: "600",
+    },
+  });

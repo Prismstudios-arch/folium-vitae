@@ -2,7 +2,8 @@ import React from "react";
 import { Pressable, Text, StyleSheet, ActivityIndicator, StyleProp, ViewStyle, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, ComponentStyles, Motion, Typography } from "@constants/theme";
+import { ComponentStyles, Motion, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Icon } from "./Icon";
 
 export type ButtonVariant = "primary" | "secondary" | "tertiary" | "destructive" | "inverse";
@@ -20,14 +21,14 @@ interface ButtonProps {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-const VARIANTS: Record<ButtonVariant, { background: string; text: string }> = {
+const variantColors = (Colors: Palette): Record<ButtonVariant, { background: string; text: string }> => ({
   primary: { background: Colors.brand, text: Colors.textOnBrand },
   secondary: { background: Colors.brandTint, text: Colors.brandDark },
   tertiary: { background: "transparent", text: Colors.brand },
-  destructive: { background: "#FBE9E6", text: Colors.error },
+  destructive: { background: Colors.errorTint, text: Colors.error },
   /** White, for the emerald hero surfaces. */
   inverse: { background: "#FFFFFF", text: Colors.brandDeep },
-};
+});
 
 /**
  * The app's button.
@@ -47,9 +48,11 @@ export function Button({
   style,
   testID,
 }: ButtonProps) {
+  const styles = useThemedStyles(createStyles);
   const isDisabled = disabled || loading;
   const scale = useSharedValue(1);
-  const colors = VARIANTS[variant];
+  const palette = useColors();
+  const colors = variantColors(palette)[variant];
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -98,23 +101,24 @@ export function TertiaryButton(props: SecondaryButtonProps) {
   return <Button {...props} variant="tertiary" />;
 }
 
-const styles = StyleSheet.create({
-  base: {
-    minHeight: ComponentStyles.button.minHeight,
-    borderRadius: ComponentStyles.button.borderRadius,
-    paddingHorizontal: ComponentStyles.button.paddingHorizontal,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  disabled: {
-    opacity: 0.4,
-  },
-  text: {
-    ...Typography.button,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    base: {
+      minHeight: ComponentStyles.button.minHeight,
+      borderRadius: ComponentStyles.button.borderRadius,
+      paddingHorizontal: ComponentStyles.button.paddingHorizontal,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    content: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    disabled: {
+      opacity: 0.4,
+    },
+    text: {
+      ...Typography.button,
+    },
+  });

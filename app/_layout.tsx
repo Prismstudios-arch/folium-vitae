@@ -5,7 +5,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import * as Notifications from "expo-notifications";
-import { Colors } from "@constants/theme";
+import * as SplashScreen from "expo-splash-screen";
+import { ThemeProvider, useTheme } from "@hooks/useTheme";
 import { getUserPreferences } from "@services/userPreferences";
 import { bootstrapSession } from "@services/session";
 import { getApiClient } from "@services/apiClient";
@@ -41,7 +42,13 @@ const useLastNotificationResponse = notificationsSupported
  */
 const fullBleed = (backgroundColor: string) => ({ contentStyle: { backgroundColor } });
 
+// Keep the splash up until we know which screen to open and in which
+// appearance. Launch used to show a blank frame between the two — white, which
+// would flash in dark mode.
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
 function NavigationLayout() {
+  const { colors: Colors, scheme, setPreference } = useTheme();
   const [isChecking, setIsChecking] = useState(true);
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -81,6 +88,7 @@ function NavigationLayout() {
     ]);
 
     if (prefsResult.status === "fulfilled") {
+      setPreference(prefsResult.value.appearance ?? "system");
       if (!prefsResult.value.hasCompletedOnboarding) {
         router.replace("/onboarding");
       }
@@ -96,13 +104,17 @@ function NavigationLayout() {
     setIsChecking(false);
   };
 
+  useEffect(() => {
+    if (!isChecking) SplashScreen.hideAsync().catch(() => undefined);
+  }, [isChecking]);
+
   if (isChecking) {
     return null;
   }
 
   return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <Stack
         screenOptions={{
           headerShown: false,
@@ -138,7 +150,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <NavigationLayout />
+        <ThemeProvider>
+          <NavigationLayout />
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

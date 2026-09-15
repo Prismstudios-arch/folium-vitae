@@ -3,6 +3,8 @@
  * Core business logic types (no UI framework dependencies)
  */
 
+import { formatCommonName } from "../utils/plantNames";
+
 // MARK: - Taxonomy
 
 export interface Taxonomy {
@@ -231,11 +233,14 @@ export interface WaterLog {
 }
 
 // Helper functions
+
+/** A nickname exactly as typed; otherwise the common name, tidied; otherwise the scientific name. */
 export function getDisplayName(plant: SavedPlant | Species): string {
   if ("nickname" in plant && plant.nickname) {
     return plant.nickname;
   }
-  return plant.commonNames[0] || plant.scientificName;
+  const common = plant.commonNames[0];
+  return common ? formatCommonName(common) : plant.scientificName;
 }
 
 /**

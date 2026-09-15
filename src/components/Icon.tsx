@@ -1,6 +1,6 @@
 import { View, StyleProp, ViewStyle } from "react-native";
 import { SymbolView, SFSymbol, SymbolWeight } from "expo-symbols";
-import { Colors } from "@constants/theme";
+import { useColors } from "@hooks/useTheme";
 
 interface IconProps {
   name: SFSymbol;
@@ -19,12 +19,14 @@ interface IconProps {
  * take the brand colour, and are the quickest way to make an app look
  * unfinished.
  */
-export function Icon({ name, size = 22, color = Colors.leaf, weight = "medium", style }: IconProps) {
+export function Icon({ name, size = 22, color, weight = "medium", style }: IconProps) {
+  const Colors = useColors();
+
   return (
     <SymbolView
       name={name}
       size={size}
-      tintColor={color}
+      tintColor={color ?? Colors.brand}
       weight={weight}
       style={[{ width: size, height: size }, style]}
       // SF Symbols are iOS-only; elsewhere keep the space so layouts hold.

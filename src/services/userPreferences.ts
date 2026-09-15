@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import type { AppearancePreference } from "@constants/theme";
 import { deleteAllData, fetchAllPlants } from "./database";
 
 export interface UserPreferences {
@@ -8,6 +9,8 @@ export interface UserPreferences {
   hasChildrenOrPets: boolean;
   showToxicityWarnings: boolean;
   notificationsEnabled: boolean;
+  /** Absent in settings saved before there was a choice: follow the phone. */
+  appearance?: AppearancePreference;
   referralSource?: string;
 }
 

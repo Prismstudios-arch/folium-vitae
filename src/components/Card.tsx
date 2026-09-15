@@ -1,7 +1,8 @@
 import React from "react";
 import { View, Text, StyleSheet, ViewStyle } from "react-native";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, Spacing, ComponentStyles, Typography } from "@constants/theme";
+import { Spacing, ComponentStyles, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Icon } from "./Icon";
 
 interface CardProps {
@@ -11,6 +12,7 @@ interface CardProps {
 }
 
 export function Card({ children, style, testID }: CardProps) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={[styles.card, style]} testID={testID}>
       {children}
@@ -25,14 +27,17 @@ interface ConfidenceBadgeProps {
   testID?: string;
 }
 
-const BAND: Record<ConfidenceBadgeProps["band"], { label: string; color: string; icon: SFSymbol }> = {
-  confident: { label: "Confident", color: Colors.confident, icon: "checkmark.seal.fill" },
-  probably: { label: "Probably", color: Colors.probably, icon: "questionmark.circle.fill" },
-  notSure: { label: "Not sure", color: Colors.notSure, icon: "questionmark.circle" },
+const BAND: Record<ConfidenceBadgeProps["band"], { label: string; color: keyof Palette; icon: SFSymbol }> = {
+  confident: { label: "Confident", color: "confident", icon: "checkmark.seal.fill" },
+  probably: { label: "Probably", color: "probably", icon: "questionmark.circle.fill" },
+  notSure: { label: "Not sure", color: "notSure", icon: "questionmark.circle" },
 };
 
 export function ConfidenceBadge({ band, testID }: ConfidenceBadgeProps) {
-  const { label, color, icon } = BAND[band];
+  const styles = useThemedStyles(createStyles);
+  const Colors = useColors();
+  const { label, icon } = BAND[band];
+  const color = Colors[BAND[band].color];
 
   return (
     <View style={[styles.badge, { backgroundColor: color }]} testID={testID}>
@@ -56,6 +61,7 @@ const TOXIC_TO: Record<ToxicityBadgeProps["type"], { label: string; icon: SFSymb
 
 /** DESIGN.md: sienna, white text, icon and label ("Toxic to cats"). */
 export function ToxicityBadge({ type, level, testID }: ToxicityBadgeProps) {
+  const styles = useThemedStyles(createStyles);
   if (level === "none") return null;
 
   const { label, icon } = TOXIC_TO[type];
@@ -68,29 +74,30 @@ export function ToxicityBadge({ type, level, testID }: ToxicityBadgeProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.background,
-    borderRadius: ComponentStyles.card.borderRadius,
-    padding: ComponentStyles.card.padding,
-    borderColor: Colors.glass,
-    borderWidth: 1,
-  },
-  badge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: Spacing.tight,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-  },
-  badgeText: {
-    ...Typography.caption2,
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  toxicityBadge: {
-    backgroundColor: Colors.toxicity,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: Colors.background,
+      borderRadius: ComponentStyles.card.borderRadius,
+      padding: ComponentStyles.card.padding,
+      borderColor: Colors.glass,
+      borderWidth: 1,
+    },
+    badge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: Spacing.tight,
+      paddingVertical: 6,
+      borderRadius: 8,
+      alignSelf: "flex-start",
+    },
+    badgeText: {
+      ...Typography.caption2,
+      color: "#FFFFFF",
+      fontWeight: "600",
+    },
+    toxicityBadge: {
+      backgroundColor: Colors.toxicity,
+    },
+  });

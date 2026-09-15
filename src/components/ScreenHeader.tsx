@@ -1,7 +1,8 @@
 import { View, Text, StyleSheet, Pressable, StyleProp, ViewStyle } from "react-native";
 import { ReactNode } from "react";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, Radius, Spacing, Typography } from "@constants/theme";
+import { Radius, Spacing, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Icon } from "./Icon";
 
 interface ScreenHeaderProps {
@@ -30,6 +31,8 @@ export function ScreenHeader({
   right,
   style,
 }: ScreenHeaderProps) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={[styles.container, style]}>
       <View style={styles.row}>
@@ -72,6 +75,8 @@ export function HeaderIconButton({
   onPress: () => void;
   onDark?: boolean;
 }) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -89,56 +94,57 @@ export function HeaderIconButton({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.compact,
-    paddingBottom: Spacing.default,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    minHeight: 44,
-  },
-  back: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    minHeight: 44,
-    minWidth: 44,
-    marginLeft: -6,
-  },
-  backLabel: {
-    ...Typography.bodyLarge,
-    color: Colors.brand,
-  },
-  pressed: {
-    opacity: 0.55,
-  },
-  title: {
-    ...Typography.displayLarge,
-    color: Colors.textPrimary,
-    marginTop: Spacing.compact,
-  },
-  subtitle: {
-    ...Typography.bodyLarge,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconButtonLight: {
-    backgroundColor: Colors.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.separator,
-  },
-  iconButtonDark: {
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      paddingHorizontal: Spacing.default,
+      paddingTop: Spacing.compact,
+      paddingBottom: Spacing.default,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      minHeight: 44,
+    },
+    back: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+      minHeight: 44,
+      minWidth: 44,
+      marginLeft: -6,
+    },
+    backLabel: {
+      ...Typography.bodyLarge,
+      color: Colors.brand,
+    },
+    pressed: {
+      opacity: 0.55,
+    },
+    title: {
+      ...Typography.displayLarge,
+      color: Colors.textPrimary,
+      marginTop: Spacing.compact,
+    },
+    subtitle: {
+      ...Typography.bodyLarge,
+      color: Colors.textSecondary,
+      marginTop: 2,
+    },
+    iconButton: {
+      width: 40,
+      height: 40,
+      borderRadius: Radius.pill,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    iconButtonLight: {
+      backgroundColor: Colors.card,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: Colors.separator,
+    },
+    iconButtonDark: {
+      backgroundColor: "rgba(0, 0, 0, 0.35)",
+    },
+  });

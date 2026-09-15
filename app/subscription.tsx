@@ -1,10 +1,11 @@
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Linking, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Linking, Image, Platform } from "react-native";
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, Radius, Shadow, Spacing, Tiles, Typography } from "@constants/theme";
+import { Radius, Shadow, Spacing, Tiles, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Button } from "@components/Button";
 import { HeroCard } from "@components/HeroCard";
 import { Icon } from "@components/Icon";
@@ -24,6 +25,7 @@ import { addTrialLength } from "@services/subscriptionTerms";
 import { scheduleTrialReminder } from "@services/trialReminder";
 import { getApiClient } from "@services/apiClient";
 import { useGoBack } from "@hooks/useGoBack";
+import { selectionFeedback } from "@utils/feedback";
 
 /**
  * Paywall.
@@ -38,12 +40,20 @@ import { useGoBack } from "@hooks/useGoBack";
  *  - Only offer what the subscription actually adds.
  */
 export default function SubscriptionScreen() {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const goBack = useGoBack("/");
 
+  // On iOS this is a page sheet, which already starts below the status bar.
+  // Adding the window's top inset as well left a tall empty band above the
+  // close button.
+  const topInset = Platform.OS === "ios" ? 0 : insets.top;
+
   const [plans, setPlans] = useState<Plan[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
+  const [problemDetails, setProblemDetails] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [freeLimit, setFreeLimit] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,6 +81,7 @@ export default function SubscriptionScreen() {
       const result = await loadPlans();
       setPlans(result.plans);
       setProblem(result.problem);
+      setProblemDetails(result.details);
 
       // Default to the longest period — usually the best value — without
       // hiding the others.
@@ -164,7 +175,7 @@ export default function SubscriptionScreen() {
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + Spacing.loose }]} showsVerticalScrollIndicator={false}>
         <HeroCard
           rounded={false}
-          contentStyle={[styles.heroContent, { paddingTop: insets.top + 64 }]}
+          contentStyle={[styles.heroContent, { paddingTop: topInset + 76 }]}
           illustrationStyle={{ right: -80, bottom: -20, width: 220, height: 198 }}
         >
           <Image source={require("../assets/brand-mark.png")} style={styles.heroMark} accessibilityIgnoresInvertColors />
@@ -192,6 +203,7 @@ export default function SubscriptionScreen() {
             <Notice
               title="Plans aren't available right now"
               body={`${problem ?? "Couldn't load plans."} You haven't been charged for anything.`}
+              details={problemDetails}
               onRetry={load}
             />
           ) : (
@@ -202,7 +214,10 @@ export default function SubscriptionScreen() {
                     key={plan.packageId}
                     plan={plan}
                     selected={plan.packageId === selectedId}
-                    onPress={() => setSelectedId(plan.packageId)}
+                    onPress={() => {
+                      if (plan.packageId !== selectedId) selectionFeedback();
+                      setSelectedId(plan.packageId);
+                    }}
                   />
                 ))}
               </View>
@@ -262,7 +277,7 @@ export default function SubscriptionScreen() {
       </ScrollView>
 
       {/* Visible from the first frame, top-left, full size. SPEC §9. */}
-      <View style={[styles.close, { top: insets.top + Spacing.tight }]}>
+      <View style={[styles.close, { top: topInset + Spacing.default }]}>
         <HeaderIconButton icon="xmark" label="Close" onPress={goBack} onDark />
       </View>
     </View>
@@ -282,6 +297,8 @@ function Benefit({
   detail: string;
   last?: boolean;
 }) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={[styles.benefit, !last && styles.benefitDivider]}>
       <IconTile icon={icon} color={color} size={36} />
@@ -295,6 +312,7 @@ function Benefit({
 }
 
 function PlanCard({ plan, selected, onPress }: { plan: Plan; selected: boolean; onPress: () => void }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -327,239 +345,280 @@ function PlanCard({ plan, selected, onPress }: { plan: Plan; selected: boolean; 
   );
 }
 
-function Notice({ title, body, onRetry }: { title: string; body: string; onRetry?: () => void }) {
+function Notice({
+  title,
+  body,
+  details,
+  onRetry,
+}: {
+  title: string;
+  body: string;
+  /** The store's own error, for whoever is setting the store up. Hidden until asked for. */
+  details?: string | null;
+  onRetry?: () => void;
+}) {
+  const styles = useThemedStyles(createStyles);
+  const [showDetails, setShowDetails] = useState(false);
+
   return (
     <View style={styles.notice}>
       <IconTile icon="exclamationmark.circle.fill" color={Tiles.amber} size={36} />
       <Text style={styles.noticeTitle}>{title}</Text>
       <Text style={styles.noticeBody}>{body}</Text>
       {onRetry ? <Button label="Try again" variant="secondary" onPress={onRetry} style={styles.noticeButton} /> : null}
+      {details ? (
+        showDetails ? (
+          <Text style={styles.noticeDetails} selectable>
+            {details}
+          </Text>
+        ) : (
+          <Pressable onPress={() => setShowDetails(true)} style={styles.linkButton} accessibilityRole="button">
+            <Text style={styles.noticeDetailsToggle}>Show details</Text>
+          </Pressable>
+        )
+      ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  scroll: {
-    flexGrow: 1,
-  },
-  heroContent: {
-    paddingBottom: 64,
-    paddingHorizontal: Spacing.loose,
-  },
-  heroMark: {
-    width: 64,
-    height: 64,
-    marginBottom: Spacing.default,
-  },
-  heroTitle: {
-    fontSize: 36,
-    lineHeight: 42,
-    fontWeight: "800",
-    letterSpacing: -0.4,
-    color: "#FFFFFF",
-  },
-  heroBody: {
-    ...Typography.bodyLarge,
-    lineHeight: 24,
-    color: "rgba(255, 255, 255, 0.82)",
-    marginTop: Spacing.tight,
-  },
-  sheet: {
-    marginTop: -28,
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
-    backgroundColor: Colors.bg,
-    paddingHorizontal: Spacing.default,
-    paddingTop: Spacing.loose,
-  },
-  benefits: {
-    backgroundColor: Colors.card,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.default,
-    ...Shadow.card,
-  },
-  benefit: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.default - 4,
-    paddingVertical: Spacing.default - 2,
-  },
-  benefitDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.separator,
-  },
-  benefitText: {
-    flex: 1,
-  },
-  benefitTitle: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  benefitDetail: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: 1,
-  },
-  freeNote: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    marginVertical: Spacing.default,
-    paddingHorizontal: Spacing.tight,
-  },
-  loader: {
-    marginVertical: Spacing.spacious,
-  },
-  plans: {
-    gap: Spacing.tight + 2,
-  },
-  plan: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.default - 4,
-    padding: Spacing.default,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.card,
-    borderWidth: 2,
-    borderColor: "transparent",
-    ...Shadow.card,
-  },
-  planSelected: {
-    borderColor: Colors.brand,
-  },
-  planPressed: {
-    opacity: 0.9,
-  },
-  radio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: Colors.separator,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  radioSelected: {
-    backgroundColor: Colors.brand,
-    borderColor: Colors.brand,
-  },
-  planText: {
-    flex: 1,
-  },
-  planTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  planTitle: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  trialBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.brandTint,
-  },
-  trialBadgeText: {
-    ...Typography.caption2,
-    fontWeight: "700",
-    color: Colors.brandDark,
-  },
-  planDescription: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  planPrice: {
-    alignItems: "flex-end",
-  },
-  planPriceText: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-    fontVariant: ["tabular-nums"],
-  },
-  planPeriod: {
-    ...Typography.caption2,
-    color: Colors.textSecondary,
-  },
-  cta: {
-    marginTop: Spacing.loose,
-  },
-  terms: {
-    ...Typography.caption2,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    marginTop: Spacing.tight + 2,
-    paddingHorizontal: Spacing.tight,
-  },
-  notice: {
-    alignItems: "center",
-    padding: Spacing.loose,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.card,
-    gap: Spacing.tight,
-  },
-  noticeTitle: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-    textAlign: "center",
-    marginTop: Spacing.tight,
-  },
-  noticeBody: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  noticeButton: {
-    alignSelf: "stretch",
-    marginTop: Spacing.tight,
-  },
-  links: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: Spacing.loose,
-    marginTop: Spacing.loose,
-  },
-  linkButton: {
-    minHeight: 44,
-    justifyContent: "center",
-  },
-  link: {
-    ...Typography.controlSmall,
-    color: Colors.brand,
-    fontWeight: "600",
-  },
-  legal: {
-    ...Typography.caption2,
-    color: Colors.textDisabled,
-    textAlign: "center",
-    marginTop: Spacing.default,
-    paddingHorizontal: Spacing.default,
-  },
-  legalLinks: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: Spacing.tight,
-  },
-  legalLink: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    textDecorationLine: "underline",
-  },
-  legalDivider: {
-    ...Typography.caption1,
-    color: Colors.textDisabled,
-    marginHorizontal: Spacing.tight,
-  },
-  close: {
-    position: "absolute",
-    left: Spacing.default,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Colors.bg,
+    },
+    scroll: {
+      flexGrow: 1,
+    },
+    heroContent: {
+      paddingBottom: 64,
+      paddingHorizontal: Spacing.loose,
+    },
+    heroMark: {
+      width: 64,
+      height: 64,
+      marginBottom: Spacing.default,
+    },
+    heroTitle: {
+      fontSize: 36,
+      lineHeight: 42,
+      fontWeight: "800",
+      letterSpacing: -0.4,
+      color: "#FFFFFF",
+    },
+    heroBody: {
+      ...Typography.bodyLarge,
+      lineHeight: 24,
+      color: "rgba(255, 255, 255, 0.82)",
+      marginTop: Spacing.tight,
+    },
+    sheet: {
+      marginTop: -28,
+      borderTopLeftRadius: Radius.xl,
+      borderTopRightRadius: Radius.xl,
+      backgroundColor: Colors.bg,
+      paddingHorizontal: Spacing.default,
+      paddingTop: Spacing.loose,
+    },
+    benefits: {
+      backgroundColor: Colors.card,
+      borderRadius: Radius.lg,
+      paddingHorizontal: Spacing.default,
+      ...Shadow.card,
+    },
+    benefit: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: Spacing.default - 4,
+      paddingVertical: Spacing.default - 2,
+    },
+    benefitDivider: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: Colors.separator,
+    },
+    benefitText: {
+      flex: 1,
+    },
+    benefitTitle: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+    },
+    benefitDetail: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      marginTop: 1,
+    },
+    freeNote: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      textAlign: "center",
+      marginVertical: Spacing.default,
+      paddingHorizontal: Spacing.tight,
+    },
+    loader: {
+      marginVertical: Spacing.spacious,
+    },
+    plans: {
+      gap: Spacing.tight + 2,
+    },
+    plan: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: Spacing.default - 4,
+      padding: Spacing.default,
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.card,
+      borderWidth: 2,
+      borderColor: "transparent",
+      ...Shadow.card,
+    },
+    planSelected: {
+      borderColor: Colors.brand,
+    },
+    planPressed: {
+      opacity: 0.9,
+    },
+    radio: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 2,
+      borderColor: Colors.separator,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    radioSelected: {
+      backgroundColor: Colors.brand,
+      borderColor: Colors.brand,
+    },
+    planText: {
+      flex: 1,
+    },
+    planTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    planTitle: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+    },
+    trialBadge: {
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: Radius.pill,
+      backgroundColor: Colors.brandTint,
+    },
+    trialBadgeText: {
+      ...Typography.caption2,
+      fontWeight: "700",
+      color: Colors.brandDark,
+    },
+    planDescription: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      marginTop: 2,
+    },
+    planPrice: {
+      alignItems: "flex-end",
+    },
+    planPriceText: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+      fontVariant: ["tabular-nums"],
+    },
+    planPeriod: {
+      ...Typography.caption2,
+      color: Colors.textSecondary,
+    },
+    cta: {
+      marginTop: Spacing.loose,
+    },
+    terms: {
+      ...Typography.caption2,
+      color: Colors.textSecondary,
+      textAlign: "center",
+      marginTop: Spacing.tight + 2,
+      paddingHorizontal: Spacing.tight,
+    },
+    notice: {
+      alignItems: "center",
+      padding: Spacing.loose,
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.card,
+      gap: Spacing.tight,
+    },
+    noticeTitle: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+      textAlign: "center",
+      marginTop: Spacing.tight,
+    },
+    noticeBody: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    noticeButton: {
+      alignSelf: "stretch",
+      marginTop: Spacing.tight,
+    },
+    noticeDetails: {
+      ...Typography.caption2,
+      fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+      color: Colors.textSecondary,
+      alignSelf: "stretch",
+      padding: Spacing.default - 4,
+      borderRadius: Radius.sm,
+      backgroundColor: Colors.fill,
+      marginTop: Spacing.tight,
+    },
+    noticeDetailsToggle: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      textDecorationLine: "underline",
+    },
+    links: {
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: Spacing.loose,
+      marginTop: Spacing.loose,
+    },
+    linkButton: {
+      minHeight: 44,
+      justifyContent: "center",
+    },
+    link: {
+      ...Typography.controlSmall,
+      color: Colors.brand,
+      fontWeight: "600",
+    },
+    legal: {
+      ...Typography.caption2,
+      color: Colors.textDisabled,
+      textAlign: "center",
+      marginTop: Spacing.default,
+      paddingHorizontal: Spacing.default,
+    },
+    legalLinks: {
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      marginTop: Spacing.tight,
+    },
+    legalLink: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      textDecorationLine: "underline",
+    },
+    legalDivider: {
+      ...Typography.caption1,
+      color: Colors.textDisabled,
+      marginHorizontal: Spacing.tight,
+    },
+    close: {
+      position: "absolute",
+      left: Spacing.default,
+    },
+  });

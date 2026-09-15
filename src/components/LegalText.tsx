@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from "react-native";
 import { ReactNode } from "react";
-import { Colors, Spacing, Typography } from "@constants/theme";
+import { Spacing, Typography, type Palette } from "@constants/theme";
+import { useThemedStyles } from "@hooks/useTheme";
 import { SUPPORT_EMAIL, LEGAL_LAST_UPDATED } from "@constants/config";
 import { LegalDocument, Block } from "@content/legal";
 import { useGoBack } from "@hooks/useGoBack";
@@ -43,6 +44,7 @@ function BlockView({ block }: { block: Block }) {
 
 /** Page wrapper for the legal screens. */
 export function LegalPage({ title, children }: { title: string; children: ReactNode }) {
+  const styles = useThemedStyles(createStyles);
   // Opened from Settings and the paywall. With no history — a deep link, say
   // — back goes to Settings rather than doing nothing, which router.back()
   // did.
@@ -75,6 +77,7 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
 }
 
 export function Section({ heading, children }: { heading: string; children: ReactNode }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.section}>
       <Text style={styles.h2}>{heading}</Text>
@@ -84,10 +87,12 @@ export function Section({ heading, children }: { heading: string; children: Reac
 }
 
 export function Paragraph({ children }: { children: ReactNode }) {
+  const styles = useThemedStyles(createStyles);
   return <Text style={styles.paragraph}>{children}</Text>;
 }
 
 export function Bullet({ children }: { children: ReactNode }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.bulletRow}>
       <Text style={styles.bulletMark}>•</Text>
@@ -98,6 +103,7 @@ export function Bullet({ children }: { children: ReactNode }) {
 
 /** For the things we want people to actually notice. */
 export function Highlight({ children }: { children: ReactNode }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.highlight}>
       <Text style={styles.highlightText}>{children}</Text>
@@ -105,71 +111,72 @@ export function Highlight({ children }: { children: ReactNode }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  content: { paddingHorizontal: Spacing.loose, paddingBottom: Spacing.extra },
-  // The page already has side padding; the header's own would double it.
-  header: { paddingHorizontal: 0, marginLeft: -Spacing.compact },
-  title: {
-    ...Typography.display,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.compact,
-  },
-  updated: {
-    ...Typography.caption2,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.loose,
-  },
-  section: { marginBottom: Spacing.loose },
-  h2: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.tight,
-  },
-  paragraph: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.tight,
-  },
-  bulletRow: {
-    flexDirection: "row",
-    marginBottom: Spacing.compact,
-    paddingRight: Spacing.tight,
-  },
-  bulletMark: {
-    ...Typography.body,
-    color: Colors.leaf,
-    width: 18,
-  },
-  bulletText: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-    flex: 1,
-  },
-  highlight: {
-    backgroundColor: Colors.surface,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.leaf,
-    borderRadius: 4,
-    padding: Spacing.default,
-    marginVertical: Spacing.tight,
-  },
-  highlightText: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textPrimary,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.glass,
-    marginVertical: Spacing.loose,
-  },
-  email: {
-    ...Typography.bodyLarge,
-    color: Colors.leaf,
-    marginTop: Spacing.compact,
-  },
-  footerSpace: { height: Spacing.extra },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: Colors.background },
+    content: { paddingHorizontal: Spacing.loose, paddingBottom: Spacing.extra },
+    // The page already has side padding; the header's own would double it.
+    header: { paddingHorizontal: 0, marginLeft: -Spacing.compact },
+    title: {
+      ...Typography.display,
+      color: Colors.textPrimary,
+      marginBottom: Spacing.compact,
+    },
+    updated: {
+      ...Typography.caption2,
+      color: Colors.textSecondary,
+      marginBottom: Spacing.loose,
+    },
+    section: { marginBottom: Spacing.loose },
+    h2: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+      marginBottom: Spacing.tight,
+    },
+    paragraph: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textSecondary,
+      marginBottom: Spacing.tight,
+    },
+    bulletRow: {
+      flexDirection: "row",
+      marginBottom: Spacing.compact,
+      paddingRight: Spacing.tight,
+    },
+    bulletMark: {
+      ...Typography.body,
+      color: Colors.leaf,
+      width: 18,
+    },
+    bulletText: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textSecondary,
+      flex: 1,
+    },
+    highlight: {
+      backgroundColor: Colors.surface,
+      borderLeftWidth: 3,
+      borderLeftColor: Colors.leaf,
+      borderRadius: 4,
+      padding: Spacing.default,
+      marginVertical: Spacing.tight,
+    },
+    highlightText: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textPrimary,
+    },
+    divider: {
+      height: 1,
+      backgroundColor: Colors.glass,
+      marginVertical: Spacing.loose,
+    },
+    email: {
+      ...Typography.bodyLarge,
+      color: Colors.leaf,
+      marginTop: Spacing.compact,
+    },
+    footerSpace: { height: Spacing.extra },
+  });

@@ -3,7 +3,8 @@ import { useMemo, useState, useCallback } from "react";
 import { useRouter, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { Colors, Radius, Shadow, Spacing, Tiles, Typography } from "@constants/theme";
+import { Radius, Shadow, Spacing, Tiles, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Button } from "@components/Button";
 import { Chip } from "@components/Chip";
 import { Icon } from "@components/Icon";
@@ -23,6 +24,8 @@ const SORTS: Array<{ id: SortBy; label: string }> = [
 ];
 
 export default function MyPlantsScreen() {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const goBack = useGoBack("/");
   const { plants, loading, error, loadPlants, removePlant } = usePlants();
@@ -191,8 +194,13 @@ function PlantTile({
   onLongPress: (plant: SavedPlant) => void;
   hero?: boolean;
 }) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const cover = getMostRecentPhoto(plant);
-  const secondary = plant.location || (plant.nickname ? plant.commonNames[0] ?? plant.scientificName : null);
+  // With a nickname showing, the second line says what the plant actually is.
+  const secondary =
+    plant.location ||
+    (plant.nickname ? getDisplayName({ ...plant, nickname: undefined }) : null);
 
   return (
     <Pressable
@@ -228,123 +236,124 @@ function PlantTile({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  loader: {
-    marginTop: Spacing.extra,
-  },
-  stateCard: {
-    margin: Spacing.default,
-    alignItems: "center",
-    padding: Spacing.loose,
-    borderRadius: Radius.xl,
-    backgroundColor: Colors.card,
-    gap: Spacing.tight,
-  },
-  stateTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    textAlign: "center",
-    marginTop: Spacing.tight,
-  },
-  stateBody: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  stateButton: {
-    alignSelf: "stretch",
-    marginTop: Spacing.default,
-  },
-  listContent: {
-    paddingBottom: Spacing.extra,
-  },
-  search: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.tight,
-    marginHorizontal: Spacing.default,
-    paddingHorizontal: Spacing.default - 2,
-    height: 46,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.card,
-  },
-  searchInput: {
-    flex: 1,
-    ...Typography.bodyLarge,
-    color: Colors.textPrimary,
-    padding: 0,
-  },
-  sorts: {
-    paddingHorizontal: Spacing.default,
-    paddingVertical: Spacing.default - 4,
-    gap: Spacing.tight,
-  },
-  noResults: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    paddingVertical: Spacing.spacious,
-  },
-  gridRow: {
-    paddingHorizontal: Spacing.default,
-    gap: Spacing.default - 4,
-    marginBottom: Spacing.default - 4,
-  },
-  tile: {
-    borderRadius: Radius.lg,
-    overflow: "hidden",
-    backgroundColor: Colors.separator,
-    justifyContent: "flex-end",
-    ...Shadow.card,
-  },
-  tileHero: {
-    height: 240,
-    marginHorizontal: Spacing.default,
-    marginBottom: Spacing.default - 4,
-  },
-  tileGrid: {
-    flex: 1,
-    aspectRatio: 0.8,
-  },
-  pressed: {
-    transform: [{ scale: 0.98 }],
-  },
-  placeholder: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: "55%",
-  },
-  label: {
-    padding: Spacing.default - 2,
-  },
-  name: {
-    ...Typography.subheadline,
-    color: "#FFFFFF",
-  },
-  nameHero: {
-    ...Typography.display,
-    color: "#FFFFFF",
-  },
-  meta: {
-    ...Typography.caption1,
-    color: "rgba(255, 255, 255, 0.85)",
-    marginTop: 1,
-  },
-  hint: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    marginTop: Spacing.tight,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Colors.bg,
+    },
+    loader: {
+      marginTop: Spacing.extra,
+    },
+    stateCard: {
+      margin: Spacing.default,
+      alignItems: "center",
+      padding: Spacing.loose,
+      borderRadius: Radius.xl,
+      backgroundColor: Colors.card,
+      gap: Spacing.tight,
+    },
+    stateTitle: {
+      ...Typography.headline,
+      color: Colors.textPrimary,
+      textAlign: "center",
+      marginTop: Spacing.tight,
+    },
+    stateBody: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    stateButton: {
+      alignSelf: "stretch",
+      marginTop: Spacing.default,
+    },
+    listContent: {
+      paddingBottom: Spacing.extra,
+    },
+    search: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: Spacing.tight,
+      marginHorizontal: Spacing.default,
+      paddingHorizontal: Spacing.default - 2,
+      height: 46,
+      borderRadius: Radius.md,
+      backgroundColor: Colors.card,
+    },
+    searchInput: {
+      flex: 1,
+      ...Typography.bodyLarge,
+      color: Colors.textPrimary,
+      padding: 0,
+    },
+    sorts: {
+      paddingHorizontal: Spacing.default,
+      paddingVertical: Spacing.default - 4,
+      gap: Spacing.tight,
+    },
+    noResults: {
+      ...Typography.body,
+      color: Colors.textSecondary,
+      textAlign: "center",
+      paddingVertical: Spacing.spacious,
+    },
+    gridRow: {
+      paddingHorizontal: Spacing.default,
+      gap: Spacing.default - 4,
+      marginBottom: Spacing.default - 4,
+    },
+    tile: {
+      borderRadius: Radius.lg,
+      overflow: "hidden",
+      backgroundColor: Colors.separator,
+      justifyContent: "flex-end",
+      ...Shadow.card,
+    },
+    tileHero: {
+      height: 240,
+      marginHorizontal: Spacing.default,
+      marginBottom: Spacing.default - 4,
+    },
+    tileGrid: {
+      flex: 1,
+      aspectRatio: 0.8,
+    },
+    pressed: {
+      transform: [{ scale: 0.98 }],
+    },
+    placeholder: {
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    fade: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: "55%",
+    },
+    label: {
+      padding: Spacing.default - 2,
+    },
+    name: {
+      ...Typography.subheadline,
+      color: "#FFFFFF",
+    },
+    nameHero: {
+      ...Typography.display,
+      color: "#FFFFFF",
+    },
+    meta: {
+      ...Typography.caption1,
+      color: "rgba(255, 255, 255, 0.85)",
+      marginTop: 1,
+    },
+    hint: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      textAlign: "center",
+      marginTop: Spacing.tight,
+    },
+  });

@@ -1,7 +1,8 @@
 import React, { ReactNode } from "react";
 import { View, Image, StyleSheet, StyleProp, ViewStyle, ImageStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Colors, Radius, Shadow, Spacing } from "@constants/theme";
+import { Radius, Shadow, Spacing, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 
 /**
  * The emerald surface from the app icon, with the icon's leaves growing in
@@ -26,6 +27,8 @@ export function HeroCard({
   contentStyle?: StyleProp<ViewStyle>;
   illustrationStyle?: StyleProp<ImageStyle>;
 }) {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={[rounded && styles.rounded, rounded && Shadow.raised, style]}>
       <LinearGradient
@@ -48,22 +51,23 @@ export function HeroCard({
   );
 }
 
-const styles = StyleSheet.create({
-  rounded: {
-    borderRadius: Radius.xl,
-    overflow: "hidden",
-  },
-  fill: {
-    overflow: "hidden",
-  },
-  illustration: {
-    position: "absolute",
-    right: -70,
-    bottom: -60,
-    width: 250,
-    height: 225,
-  },
-  content: {
-    padding: Spacing.loose,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    rounded: {
+      borderRadius: Radius.xl,
+      overflow: "hidden",
+    },
+    fill: {
+      overflow: "hidden",
+    },
+    illustration: {
+      position: "absolute",
+      right: -70,
+      bottom: -60,
+      width: 250,
+      height: 225,
+    },
+    content: {
+      padding: Spacing.loose,
+    },
+  });

@@ -2,7 +2,8 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import type { SFSymbol } from "expo-symbols";
 import { CareGuide, ToxicityLevel } from "@domain/plant";
-import { Colors, Radius, Spacing, Tiles, Typography } from "@constants/theme";
+import { Radius, Spacing, Tiles, Typography, type Palette } from "@constants/theme";
+import { useThemedStyles } from "@hooks/useTheme";
 import {
   Units,
   describeLight,
@@ -41,6 +42,7 @@ function hasToxicity(guide: CareGuide): boolean {
  * built only from what the care library actually records.
  */
 export function CareCard({ guide, units = "metric" }: CareCardProps) {
+  const styles = useThemedStyles(createStyles);
   const temperature = formatTemperatureRange(
     guide.temperature.minCelsius,
     guide.temperature.maxCelsius,
@@ -97,6 +99,7 @@ export function CareCard({ guide, units = "metric" }: CareCardProps) {
 }
 
 function CareTile({ icon, color, label, value }: { icon: SFSymbol; color: string; label: string; value: string }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.tile}>
       <IconTile icon={icon} color={color} size={30} />
@@ -119,6 +122,7 @@ function Detail({
   body: string;
   note?: string;
 }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.detail}>
       <IconTile icon={icon} color={color} size={30} />
@@ -131,72 +135,73 @@ function Detail({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    gap: Spacing.default - 4,
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: Spacing.default - 6,
-  },
-  tile: {
-    flexGrow: 1,
-    flexBasis: "46%",
-    padding: Spacing.default - 2,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.card,
-  },
-  tileLabel: {
-    ...Typography.caption2,
-    color: Colors.textSecondary,
-    marginTop: Spacing.default - 6,
-  },
-  tileValue: {
-    ...Typography.subheadline,
-    fontSize: 16,
-    lineHeight: 21,
-    color: Colors.textPrimary,
-    marginTop: 2,
-  },
-  details: {
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.card,
-    paddingHorizontal: Spacing.default,
-  },
-  detail: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: Spacing.default - 4,
-    paddingVertical: Spacing.default - 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.separator,
-  },
-  detailLast: {
-    borderBottomWidth: 0,
-  },
-  detailText: {
-    flex: 1,
-  },
-  detailTitle: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  detailBody: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  detailNote: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: Spacing.compact,
-  },
-  badges: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 6,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      gap: Spacing.default - 4,
+    },
+    grid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: Spacing.default - 6,
+    },
+    tile: {
+      flexGrow: 1,
+      flexBasis: "46%",
+      padding: Spacing.default - 2,
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.card,
+    },
+    tileLabel: {
+      ...Typography.caption2,
+      color: Colors.textSecondary,
+      marginTop: Spacing.default - 6,
+    },
+    tileValue: {
+      ...Typography.subheadline,
+      fontSize: 16,
+      lineHeight: 21,
+      color: Colors.textPrimary,
+      marginTop: 2,
+    },
+    details: {
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.card,
+      paddingHorizontal: Spacing.default,
+    },
+    detail: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: Spacing.default - 4,
+      paddingVertical: Spacing.default - 2,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: Colors.separator,
+    },
+    detailLast: {
+      borderBottomWidth: 0,
+    },
+    detailText: {
+      flex: 1,
+    },
+    detailTitle: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+    },
+    detailBody: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textSecondary,
+      marginTop: 2,
+    },
+    detailNote: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      marginTop: Spacing.compact,
+    },
+    badges: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      marginTop: 6,
+    },
+  });

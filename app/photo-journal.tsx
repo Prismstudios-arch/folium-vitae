@@ -2,7 +2,8 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator
 import { useState, useEffect } from "react";
 import { useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { Colors, Radius, Spacing, Tiles, Typography } from "@constants/theme";
+import { Radius, Spacing, Tiles, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Button } from "@components/Button";
 import { IconTile } from "@components/ListGroup";
 import { ScreenHeader, HeaderIconButton } from "@components/ScreenHeader";
@@ -19,6 +20,8 @@ const PHOTO_SIZE = (width - Spacing.default * 2 - GAP) / 2;
 type Source = "camera" | "library";
 
 export default function PhotoJournalScreen() {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const goBack = useGoBack("/my-plants");
   const { plantId, plantName } = useLocalSearchParams<{ plantId: string; plantName?: string }>();
 
@@ -251,94 +254,95 @@ export default function PhotoJournalScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  scrollContent: {
-    paddingBottom: Spacing.extra,
-  },
-  loader: {
-    marginTop: Spacing.spacious,
-  },
-  stateCard: {
-    margin: Spacing.default,
-    alignItems: "center",
-    padding: Spacing.loose,
-    borderRadius: Radius.xl,
-    backgroundColor: Colors.card,
-    gap: Spacing.tight,
-  },
-  stateTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    textAlign: "center",
-    marginTop: Spacing.tight,
-  },
-  stateBody: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  stateButton: {
-    alignSelf: "stretch",
-    marginTop: Spacing.default,
-  },
-  gridWrap: {
-    paddingHorizontal: Spacing.default,
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    columnGap: GAP,
-    rowGap: GAP,
-  },
-  photoCard: {
-    width: PHOTO_SIZE,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.card,
-    overflow: "hidden",
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-  photo: {
-    width: "100%",
-    height: PHOTO_SIZE,
-    backgroundColor: Colors.separator,
-  },
-  photoMissing: {
-    alignItems: "center",
-    justifyContent: "center",
-    padding: Spacing.default,
-  },
-  photoMissingText: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  photoInfo: {
-    padding: Spacing.default - 4,
-  },
-  photoDate: {
-    ...Typography.caption1,
-    fontWeight: "600",
-    color: Colors.textPrimary,
-  },
-  photoCaption: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  hint: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    marginTop: Spacing.default,
-  },
-  addButton: {
-    marginTop: Spacing.default,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Colors.bg,
+    },
+    scrollContent: {
+      paddingBottom: Spacing.extra,
+    },
+    loader: {
+      marginTop: Spacing.spacious,
+    },
+    stateCard: {
+      margin: Spacing.default,
+      alignItems: "center",
+      padding: Spacing.loose,
+      borderRadius: Radius.xl,
+      backgroundColor: Colors.card,
+      gap: Spacing.tight,
+    },
+    stateTitle: {
+      ...Typography.headline,
+      color: Colors.textPrimary,
+      textAlign: "center",
+      marginTop: Spacing.tight,
+    },
+    stateBody: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    stateButton: {
+      alignSelf: "stretch",
+      marginTop: Spacing.default,
+    },
+    gridWrap: {
+      paddingHorizontal: Spacing.default,
+    },
+    grid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      columnGap: GAP,
+      rowGap: GAP,
+    },
+    photoCard: {
+      width: PHOTO_SIZE,
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.card,
+      overflow: "hidden",
+    },
+    pressed: {
+      opacity: 0.9,
+    },
+    photo: {
+      width: "100%",
+      height: PHOTO_SIZE,
+      backgroundColor: Colors.separator,
+    },
+    photoMissing: {
+      alignItems: "center",
+      justifyContent: "center",
+      padding: Spacing.default,
+    },
+    photoMissingText: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    photoInfo: {
+      padding: Spacing.default - 4,
+    },
+    photoDate: {
+      ...Typography.caption1,
+      fontWeight: "600",
+      color: Colors.textPrimary,
+    },
+    photoCaption: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      marginTop: 2,
+    },
+    hint: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      textAlign: "center",
+      marginTop: Spacing.default,
+    },
+    addButton: {
+      marginTop: Spacing.default,
+    },
+  });

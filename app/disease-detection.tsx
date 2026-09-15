@@ -2,7 +2,8 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Linking, Pressab
 import { useState, useRef, useCallback } from "react";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { Colors, Radius, Shadow, Spacing, Tiles, Typography } from "@constants/theme";
+import { Radius, Shadow, Spacing, Tiles, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Button } from "@components/Button";
 import { ConfidenceMeter } from "@components/ConfidenceMeter";
 import { HeroCard } from "@components/HeroCard";
@@ -20,6 +21,8 @@ type PlanState = "checking" | "free" | "paid" | "unknown";
 type Phase = "idle" | "capturing" | "analysing";
 
 export default function DiseaseDetectionScreen() {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const goBack = useGoBack("/my-plants");
   const { plantName } = useLocalSearchParams<{ plantId?: string; plantName?: string }>();
@@ -233,6 +236,7 @@ export default function DiseaseDetectionScreen() {
 }
 
 function DiseaseCard({ disease }: { disease: DiseaseFinding }) {
+  const styles = useThemedStyles(createStyles);
   const treatment = disease.treatment;
 
   return (
@@ -260,6 +264,7 @@ function DiseaseCard({ disease }: { disease: DiseaseFinding }) {
 }
 
 function TreatmentList({ label, steps, caution }: { label: string; steps?: string[]; caution?: string }) {
+  const styles = useThemedStyles(createStyles);
   if (!steps?.length) return null;
 
   return (
@@ -276,210 +281,211 @@ function TreatmentList({ label, steps, caution }: { label: string; steps?: strin
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  scrollContent: {
-    paddingBottom: Spacing.extra,
-  },
-  centred: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    marginTop: Spacing.default,
-  },
-  gate: {
-    marginHorizontal: Spacing.default,
-  },
-  gateTitle: {
-    ...Typography.display,
-    color: "#FFFFFF",
-    marginTop: Spacing.default,
-    maxWidth: "80%",
-  },
-  gateBody: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: "rgba(255, 255, 255, 0.82)",
-    marginTop: Spacing.tight,
-    maxWidth: "78%",
-  },
-  gateButton: {
-    alignSelf: "flex-start",
-    paddingHorizontal: Spacing.loose,
-    marginTop: Spacing.loose,
-  },
-  gateFine: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    marginTop: Spacing.default,
-    paddingHorizontal: Spacing.loose,
-  },
-  stateCard: {
-    margin: Spacing.default,
-    alignItems: "center",
-    padding: Spacing.loose,
-    borderRadius: Radius.xl,
-    backgroundColor: Colors.card,
-    gap: Spacing.tight,
-  },
-  stateTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    textAlign: "center",
-    marginTop: Spacing.tight,
-  },
-  stateBody: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  stateButton: {
-    alignSelf: "stretch",
-    marginTop: Spacing.default,
-  },
-  status: {
-    marginHorizontal: Spacing.default,
-    alignItems: "center",
-    padding: Spacing.loose,
-    borderRadius: Radius.xl,
-    backgroundColor: Colors.card,
-    ...Shadow.card,
-  },
-  statusTitle: {
-    ...Typography.display,
-    color: Colors.textPrimary,
-    marginTop: Spacing.default,
-  },
-  statusMeter: {
-    alignSelf: "stretch",
-    marginTop: Spacing.loose,
-  },
-  statusFine: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginTop: Spacing.default - 4,
-  },
-  sectionTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    marginHorizontal: Spacing.default,
-    marginTop: Spacing.spacious,
-    marginBottom: Spacing.default - 4,
-  },
-  disease: {
-    marginHorizontal: Spacing.default,
-    marginBottom: Spacing.default - 4,
-    padding: Spacing.default,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.card,
-  },
-  diseaseHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.tight,
-  },
-  diseaseName: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-    flex: 1,
-  },
-  likelihood: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.bg,
-  },
-  likelihoodText: {
-    ...Typography.caption1,
-    fontWeight: "700",
-    color: Colors.textSecondary,
-    fontVariant: ["tabular-nums"],
-  },
-  diseaseDescription: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-    marginTop: Spacing.tight,
-  },
-  treatment: {
-    marginTop: Spacing.default,
-  },
-  treatmentLabel: {
-    ...Typography.overline,
-    color: Colors.brand,
-    marginBottom: 6,
-  },
-  step: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: Spacing.tight + 2,
-    marginBottom: 6,
-  },
-  stepDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.brand,
-    marginTop: 8,
-  },
-  stepText: {
-    ...Typography.body,
-    lineHeight: 22,
-    color: Colors.textPrimary,
-    flex: 1,
-  },
-  caution: {
-    ...Typography.caption1,
-    color: Colors.toxicity,
-    marginTop: 4,
-  },
-  disclaimer: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-    marginHorizontal: Spacing.loose,
-    marginTop: Spacing.default,
-    textAlign: "center",
-  },
-  actions: {
-    marginHorizontal: Spacing.default,
-    marginTop: Spacing.loose,
-    gap: Spacing.compact,
-  },
-  cameraWrap: {
-    flex: 1,
-    marginHorizontal: Spacing.default,
-    borderRadius: Radius.xl,
-    overflow: "hidden",
-    backgroundColor: "#000000",
-  },
-  tips: {
-    position: "absolute",
-    top: Spacing.default - 4,
-    left: Spacing.default - 4,
-    right: Spacing.default - 4,
-    padding: Spacing.default - 2,
-    borderRadius: Radius.md,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  },
-  tipsTitle: {
-    ...Typography.subheadline,
-    color: "#FFFFFF",
-  },
-  tip: {
-    ...Typography.caption1,
-    color: "rgba(255, 255, 255, 0.88)",
-    marginTop: 2,
-  },
-  footer: {
-    padding: Spacing.default,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Colors.bg,
+    },
+    scrollContent: {
+      paddingBottom: Spacing.extra,
+    },
+    centred: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    loadingText: {
+      ...Typography.body,
+      color: Colors.textSecondary,
+      marginTop: Spacing.default,
+    },
+    gate: {
+      marginHorizontal: Spacing.default,
+    },
+    gateTitle: {
+      ...Typography.display,
+      color: "#FFFFFF",
+      marginTop: Spacing.default,
+      maxWidth: "80%",
+    },
+    gateBody: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: "rgba(255, 255, 255, 0.82)",
+      marginTop: Spacing.tight,
+      maxWidth: "78%",
+    },
+    gateButton: {
+      alignSelf: "flex-start",
+      paddingHorizontal: Spacing.loose,
+      marginTop: Spacing.loose,
+    },
+    gateFine: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      textAlign: "center",
+      marginTop: Spacing.default,
+      paddingHorizontal: Spacing.loose,
+    },
+    stateCard: {
+      margin: Spacing.default,
+      alignItems: "center",
+      padding: Spacing.loose,
+      borderRadius: Radius.xl,
+      backgroundColor: Colors.card,
+      gap: Spacing.tight,
+    },
+    stateTitle: {
+      ...Typography.headline,
+      color: Colors.textPrimary,
+      textAlign: "center",
+      marginTop: Spacing.tight,
+    },
+    stateBody: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    stateButton: {
+      alignSelf: "stretch",
+      marginTop: Spacing.default,
+    },
+    status: {
+      marginHorizontal: Spacing.default,
+      alignItems: "center",
+      padding: Spacing.loose,
+      borderRadius: Radius.xl,
+      backgroundColor: Colors.card,
+      ...Shadow.card,
+    },
+    statusTitle: {
+      ...Typography.display,
+      color: Colors.textPrimary,
+      marginTop: Spacing.default,
+    },
+    statusMeter: {
+      alignSelf: "stretch",
+      marginTop: Spacing.loose,
+    },
+    statusFine: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      marginTop: Spacing.default - 4,
+    },
+    sectionTitle: {
+      ...Typography.headline,
+      color: Colors.textPrimary,
+      marginHorizontal: Spacing.default,
+      marginTop: Spacing.spacious,
+      marginBottom: Spacing.default - 4,
+    },
+    disease: {
+      marginHorizontal: Spacing.default,
+      marginBottom: Spacing.default - 4,
+      padding: Spacing.default,
+      borderRadius: Radius.lg,
+      backgroundColor: Colors.card,
+    },
+    diseaseHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: Spacing.tight,
+    },
+    diseaseName: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+      flex: 1,
+    },
+    likelihood: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: Radius.pill,
+      backgroundColor: Colors.bg,
+    },
+    likelihoodText: {
+      ...Typography.caption1,
+      fontWeight: "700",
+      color: Colors.textSecondary,
+      fontVariant: ["tabular-nums"],
+    },
+    diseaseDescription: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textSecondary,
+      marginTop: Spacing.tight,
+    },
+    treatment: {
+      marginTop: Spacing.default,
+    },
+    treatmentLabel: {
+      ...Typography.overline,
+      color: Colors.brand,
+      marginBottom: 6,
+    },
+    step: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: Spacing.tight + 2,
+      marginBottom: 6,
+    },
+    stepDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: Colors.brand,
+      marginTop: 8,
+    },
+    stepText: {
+      ...Typography.body,
+      lineHeight: 22,
+      color: Colors.textPrimary,
+      flex: 1,
+    },
+    caution: {
+      ...Typography.caption1,
+      color: Colors.toxicity,
+      marginTop: 4,
+    },
+    disclaimer: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+      marginHorizontal: Spacing.loose,
+      marginTop: Spacing.default,
+      textAlign: "center",
+    },
+    actions: {
+      marginHorizontal: Spacing.default,
+      marginTop: Spacing.loose,
+      gap: Spacing.compact,
+    },
+    cameraWrap: {
+      flex: 1,
+      marginHorizontal: Spacing.default,
+      borderRadius: Radius.xl,
+      overflow: "hidden",
+      backgroundColor: "#000000",
+    },
+    tips: {
+      position: "absolute",
+      top: Spacing.default - 4,
+      left: Spacing.default - 4,
+      right: Spacing.default - 4,
+      padding: Spacing.default - 2,
+      borderRadius: Radius.md,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+    },
+    tipsTitle: {
+      ...Typography.subheadline,
+      color: "#FFFFFF",
+    },
+    tip: {
+      ...Typography.caption1,
+      color: "rgba(255, 255, 255, 0.88)",
+      marginTop: 2,
+    },
+    footer: {
+      padding: Spacing.default,
+    },
+  });

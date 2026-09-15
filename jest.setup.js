@@ -47,6 +47,7 @@ jest.mock("expo-image-picker", () => ({
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn(),
   notificationAsync: jest.fn(),
+  selectionAsync: jest.fn(() => Promise.resolve()),
 }));
 
 jest.mock("react-native-safe-area-context", () => ({
@@ -80,7 +81,7 @@ jest.mock("react-native-reanimated", () => {
     withTiming: identity,
     withRepeat: identity,
     cancelAnimation: () => undefined,
-    Easing: { inOut: identity, quad: identity },
+    Easing: { inOut: identity, out: identity, quad: identity, cubic: identity },
     FadeIn: layoutAnimation(),
     FadeInDown: layoutAnimation(),
   };

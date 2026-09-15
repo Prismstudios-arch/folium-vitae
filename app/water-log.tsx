@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import { useLocalSearchParams } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import type { SFSymbol } from "expo-symbols";
-import { Colors, Radius, Spacing, Tiles, Typography } from "@constants/theme";
+import { Radius, Spacing, Tiles, Typography, type Palette } from "@constants/theme";
+import { useColors, useThemedStyles } from "@hooks/useTheme";
 import { Button } from "@components/Button";
 import { Icon } from "@components/Icon";
 import { IconTile, ListGroup, ListRow } from "@components/ListGroup";
@@ -39,6 +40,8 @@ const SEASON_ICON: Record<Season, SFSymbol> = {
 };
 
 export default function WaterLogScreen() {
+  const Colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const goBack = useGoBack("/my-plants");
   const { plantId, plantName } = useLocalSearchParams<{ plantId: string; plantName?: string }>();
 
@@ -318,99 +321,100 @@ export default function WaterLogScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  scrollContent: {
-    paddingBottom: Spacing.extra,
-  },
-  loader: {
-    marginTop: Spacing.spacious,
-  },
-  stateCard: {
-    margin: Spacing.default,
-    alignItems: "center",
-    padding: Spacing.loose,
-    borderRadius: Radius.xl,
-    backgroundColor: Colors.card,
-    gap: Spacing.tight,
-  },
-  stateTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    marginTop: Spacing.tight,
-  },
-  stateBody: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  form: {
-    marginHorizontal: Spacing.default,
-    marginBottom: Spacing.loose,
-    padding: Spacing.default,
-    borderRadius: Radius.xl,
-    backgroundColor: Colors.card,
-    gap: Spacing.default - 4,
-  },
-  formRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  formLabel: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  amounts: {
-    flexDirection: "row",
-    gap: Spacing.tight,
-  },
-  amount: {
-    flex: 1,
-    minHeight: 68,
-    borderRadius: Radius.md,
-    borderWidth: 2,
-    borderColor: Colors.separator,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-  },
-  amountActive: {
-    borderColor: Colors.brand,
-    backgroundColor: Colors.brandTint,
-  },
-  amountText: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-  },
-  amountTextActive: {
-    color: Colors.brandDark,
-    fontWeight: "600",
-  },
-  notes: {
-    ...Typography.body,
-    minHeight: 64,
-    paddingHorizontal: Spacing.default - 2,
-    paddingTop: Spacing.default - 4,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.bg,
-    color: Colors.textPrimary,
-    textAlignVertical: "top",
-  },
-  emptyHistory: {
-    alignItems: "center",
-    paddingVertical: Spacing.loose,
-    gap: 4,
-  },
-  emptyTitle: {
-    ...Typography.subheadline,
-    color: Colors.textPrimary,
-  },
-  emptyBody: {
-    ...Typography.caption1,
-    color: Colors.textSecondary,
-  },
-});
+const createStyles = (Colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Colors.bg,
+    },
+    scrollContent: {
+      paddingBottom: Spacing.extra,
+    },
+    loader: {
+      marginTop: Spacing.spacious,
+    },
+    stateCard: {
+      margin: Spacing.default,
+      alignItems: "center",
+      padding: Spacing.loose,
+      borderRadius: Radius.xl,
+      backgroundColor: Colors.card,
+      gap: Spacing.tight,
+    },
+    stateTitle: {
+      ...Typography.headline,
+      color: Colors.textPrimary,
+      marginTop: Spacing.tight,
+    },
+    stateBody: {
+      ...Typography.body,
+      color: Colors.textSecondary,
+      textAlign: "center",
+    },
+    form: {
+      marginHorizontal: Spacing.default,
+      marginBottom: Spacing.loose,
+      padding: Spacing.default,
+      borderRadius: Radius.xl,
+      backgroundColor: Colors.card,
+      gap: Spacing.default - 4,
+    },
+    formRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    formLabel: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+    },
+    amounts: {
+      flexDirection: "row",
+      gap: Spacing.tight,
+    },
+    amount: {
+      flex: 1,
+      minHeight: 68,
+      borderRadius: Radius.md,
+      borderWidth: 2,
+      borderColor: Colors.separator,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+    },
+    amountActive: {
+      borderColor: Colors.brand,
+      backgroundColor: Colors.brandTint,
+    },
+    amountText: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+    },
+    amountTextActive: {
+      color: Colors.brandDark,
+      fontWeight: "600",
+    },
+    notes: {
+      ...Typography.body,
+      minHeight: 64,
+      paddingHorizontal: Spacing.default - 2,
+      paddingTop: Spacing.default - 4,
+      borderRadius: Radius.md,
+      backgroundColor: Colors.bg,
+      color: Colors.textPrimary,
+      textAlignVertical: "top",
+    },
+    emptyHistory: {
+      alignItems: "center",
+      paddingVertical: Spacing.loose,
+      gap: 4,
+    },
+    emptyTitle: {
+      ...Typography.subheadline,
+      color: Colors.textPrimary,
+    },
+    emptyBody: {
+      ...Typography.caption1,
+      color: Colors.textSecondary,
+    },
+  });

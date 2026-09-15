@@ -199,6 +199,29 @@ export interface PlanLoad {
   plans: Plan[];
   /** Why there are no plans, in words the paywall can show. Null when there are. */
   problem: string | null;
+  /**
+   * The store's own account of what went wrong — error code and messages —
+   * so a misconfigured product can be diagnosed from a TestFlight build.
+   */
+  details: string | null;
+}
+
+/** RevenueCat's error code and messages, joined, each said once. */
+function describeStoreError(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+
+  const e = error as {
+    message?: unknown;
+    readableErrorCode?: unknown;
+    underlyingErrorMessage?: unknown;
+    userInfo?: { readableErrorCode?: unknown };
+  };
+
+  const parts = [e.userInfo?.readableErrorCode ?? e.readableErrorCode, e.message, e.underlyingErrorMessage].filter(
+    (part): part is string => typeof part === "string" && part.trim().length > 0
+  );
+
+  return parts.length > 0 ? [...new Set(parts)].join("\n\n") : null;
 }
 
 /**
@@ -212,13 +235,18 @@ export interface PlanLoad {
 export async function loadPlans(): Promise<PlanLoad> {
   const sdk = loadPurchases();
   if (!sdk) {
-    return { plans: [], problem: unavailableReason ?? "Subscriptions aren't available on this build." };
+    return {
+      plans: [],
+      problem: unavailableReason ?? "Subscriptions aren't available on this build.",
+      details: null,
+    };
   }
 
   if (!(await ensureConfigured())) {
     return {
       plans: [],
       problem: "Couldn't connect to the App Store. Check your connection and try again.",
+      details: null,
     };
   }
 
@@ -227,9 +255,13 @@ export async function loadPlans(): Promise<PlanLoad> {
     const packages = offerings.current?.availablePackages ?? [];
 
     if (packages.length === 0) {
+      const offeringIds = Object.keys(offerings.all);
       return {
         plans: [],
         problem: "No plans are on sale right now. Please try again later.",
+        details: offerings.current
+          ? `The current offering "${offerings.current.identifier}" has no packages.`
+          : `No offering is marked Current. Offerings found: ${offeringIds.length > 0 ? offeringIds.join(", ") : "none"}.`,
       };
     }
 
@@ -265,11 +297,12 @@ export async function loadPlans(): Promise<PlanLoad> {
       };
     });
 
-    return { plans, problem: null };
+    return { plans, problem: null, details: null };
   } catch (error) {
     console.error("Failed to load plans:", error);
 
     const code = (error as { code?: string })?.code;
+    const details = describeStoreError(error);
 
     // RevenueCat's configuration error: the products it knows about weren't
     // returned by the App Store. Before launch that almost always means the
@@ -279,12 +312,14 @@ export async function loadPlans(): Promise<PlanLoad> {
         plans: [],
         problem:
           "The App Store didn't return any plans. They may still be waiting for approval — please try again later.",
+        details,
       };
     }
 
     return {
       plans: [],
       problem: "Couldn't load plans from the App Store. Check your connection and try again.",
+      details,
     };
   }
 }
