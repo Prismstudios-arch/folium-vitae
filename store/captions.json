@@ -1,0 +1,72 @@
+[
+  {
+    "file": "01.png",
+    "theme": "dark",
+    "title": "Know every\nplant you *grow*",
+    "body": "Point your camera at any plant and get an answer in seconds.",
+    "shot": "The result screen straight after a scan: the photo, the plant's name and the confidence bar."
+  },
+  {
+    "file": "02.png",
+    "theme": "dark",
+    "title": "Honest about\nhow *sure* it is",
+    "body": "Every answer shows its confidence, with the other possibilities when it's close.",
+    "shot": "A plant's page scrolled to the Identification card, ideally one listing other possibilities."
+  },
+  {
+    "file": "03.png",
+    "theme": "dark",
+    "title": "Care that follows\nthe *seasons*",
+    "body": "Watering advice for the time of year where you live.",
+    "shot": "A plant's Care section: the 'Watering now' card and the light, water, temperature and humidity tiles."
+  },
+  {
+    "file": "04.png",
+    "theme": "dark",
+    "title": "Know what's *safe*\nfor your pets",
+    "body": "Clear warnings for cats, dogs and children.",
+    "shot": "The 'Pets and children' section for a toxic plant — a monstera, peace lily or lily works well."
+  },
+  {
+    "file": "05.png",
+    "theme": "dark",
+    "title": "Fix problems\n*before* they spread",
+    "body": "What's going wrong, why, and exactly what to do.",
+    "shot": "The 'If something looks wrong' section on a plant's page."
+  },
+  {
+    "file": "06.png",
+    "theme": "dark",
+    "title": "Your whole\n*collection*",
+    "body": "Photos, notes and a watering log for every plant.",
+    "shot": "Home with four or more saved plants that have good photos."
+  },
+  {
+    "file": "07.png",
+    "theme": "dark",
+    "title": "Look up *any*\nplant",
+    "body": "Care guides for 136 plants. No scan needed.",
+    "shot": "Home → Look up a plant: the list, or a care guide opened from it."
+  },
+  {
+    "file": "08.png",
+    "theme": "light",
+    "title": "Water at the\n*right* time",
+    "body": "Reminders based on your own watering log, not a generic schedule.",
+    "shot": "A plant's watering log with a few entries and the guidance section showing."
+  },
+  {
+    "file": "09.png",
+    "theme": "dark",
+    "title": "Beautiful in\nlight or *dark*",
+    "body": "Follows your iPhone, or pick your look.",
+    "shot": "Settings → Appearance."
+  },
+  {
+    "file": "10.png",
+    "theme": "dark",
+    "title": "No traps\n*Cancel* any time",
+    "body": "See the price before any trial. No account needed.",
+    "shot": "Onboarding: the 'Built on three promises' screen."
+  }
+]

@@ -51,3 +51,7 @@ benchmark/results/
 benchmark/photos/**/*.jpg
 benchmark/photos/**/*.jpeg
 benchmark/photos/**/*.png
+
+# App Store screenshots: raw phone captures and generated images (large, regenerated on demand)
+store/raw/
+store/out/
