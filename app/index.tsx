@@ -176,6 +176,11 @@ export default function HomeScreen() {
   );
 }
 
+/** "Monday 23 September", in the reader's own locale. */
+function resetDay(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+}
+
 function QuotaLine({ quota }: { quota: QuotaState | null }) {
   const Colors = useColors();
   const styles = useThemedStyles(createStyles);
@@ -185,8 +190,8 @@ function QuotaLine({ quota }: { quota: QuotaState | null }) {
     quota.plan !== "free"
       ? "Premium · unlimited identifications"
       : quota.remaining === 0
-        ? `Today's ${quota.limit} identifications are used · they reset at 00:00 UTC`
-        : `${quota.remaining} of ${quota.limit} identifications left today`;
+        ? `This week's ${quota.limit} identifications are used · more on ${resetDay(quota.resetsAt)}`
+        : `${quota.remaining} of ${quota.limit} identifications left this week`;
 
   return (
     <View style={styles.quota}>

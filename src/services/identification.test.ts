@@ -135,7 +135,7 @@ describe("Identification Service", () => {
       const messages = [
         "Couldn't identify this plant",
         "No internet connection",
-        "You've reached your daily scan limit",
+        "You've used all 5 of this week's identifications",
       ];
 
       messages.forEach((msg) => {

@@ -59,7 +59,7 @@ export const PRIVACY_POLICY: LegalDocument = {
         },
         {
           type: "p",
-          text: "We keep a fingerprint of each photo so that re-scanning the same plant returns the previous answer instantly, without costing you one of your daily scans.",
+          text: "We keep a fingerprint of each photo so that re-scanning the same plant returns the previous answer instantly, without using up one of your identifications.",
         },
       ],
     },
@@ -68,11 +68,11 @@ export const PRIVACY_POLICY: LegalDocument = {
       blocks: [
         {
           type: "bullet",
-          text: "A random identifier for your install. It is generated on your device and is not tied to your phone's hardware, your Apple ID, or you.",
+          text: "An identifier for your install. It is worked out on your device from the identifier iOS gives apps from the same developer, and what we receive is a one-way hash of it. It is not your Apple ID, not a hardware serial number, and cannot be used to follow you into anybody else's apps. It survives reinstalling, which is how the free allowance cannot be reset by deleting the app.",
         },
         {
           type: "bullet",
-          text: "How many scans you have used today, so the daily limit works and cannot be reset by reinstalling.",
+          text: "How many identifications you have used in the current seven-day window, so the free allowance works and cannot be reset by reinstalling.",
         },
         {
           type: "bullet",
@@ -202,7 +202,7 @@ export const TERMS_OF_USE: LegalDocument = {
       blocks: [
         {
           type: "bullet",
-          text: "The free tier includes a set number of identifications each day. The count resets every day at 00:00 UTC, and the app shows how many you have left.",
+          text: "The free tier includes a set number of identifications every seven days, and more in your first week. The window starts when you make your first identification and the app shows how many you have left and when the next ones arrive.",
         },
         {
           type: "bullet",

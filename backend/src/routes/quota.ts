@@ -14,6 +14,7 @@ import { asyncHandler, ApiError } from "../middleware/errorHandler";
 import { requireAuth, requireSelf } from "../middleware/requireAuth";
 import * as Users from "../models/User";
 import { PLAN_QUOTAS } from "../models/User";
+import { describeDate } from "../utils/dates";
 
 export const quotaRoutes = Router();
 
@@ -47,7 +48,7 @@ quotaRoutes.post(
       const current = await Users.getQuota(req.params.userId);
 
       throw ApiError.tooManyRequests(
-        `You've used all ${current.limit} of today's identifications. They reset at 00:00 UTC.`,
+        `You've used all ${current.limit} of this week's identifications. You'll have more on ${describeDate(current.resetsAt)}.`,
         "DAILY_LIMIT"
       );
     }
@@ -66,9 +67,9 @@ quotaRoutes.get(
   asyncHandler(async (_req: Request, res: Response) => {
     res.json({
       plans: [
-        { id: "free", name: "Free", scansPerDay: PLAN_QUOTAS.free },
-        { id: "pro", name: "Pro", scansPerDay: PLAN_QUOTAS.pro },
-        { id: "premium", name: "Premium", scansPerDay: null }, // null = unlimited
+        { id: "free", name: "Free", scansPerWeek: PLAN_QUOTAS.free },
+        { id: "pro", name: "Pro", scansPerWeek: PLAN_QUOTAS.pro },
+        { id: "premium", name: "Premium", scansPerWeek: null }, // null = unlimited
       ],
     });
   })

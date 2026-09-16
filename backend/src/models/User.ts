@@ -13,35 +13,50 @@ import { hashPassword } from "../services/auth";
 export type Plan = "free" | "pro" | "premium";
 
 /**
- * Daily identification allowance.
+ * Identification allowance, per seven-day window.
  *
- * SPEC §9 started the free tier at 7 a day, with the note to do the
- * arithmetic and tune. Each identification costs €0.05 at Kindwise's entry
- * rate: a free user using all 7 every day costs €10.50 a month, about twice
- * what a monthly subscriber nets after Apple's cut. At 3 a day the worst case
- * is €4.50, and 3 is still enough to try the app properly and save a few plants.
+ * Each identification costs €0.05 at Kindwise's entry rate, and an annual
+ * subscription nets about $2.12 a month after Apple's 15% cut. The free tier
+ * started at 7 a day and then 3 a day — €4.55 a month for someone who used
+ * every one, which takes more than two annual subscribers to cover. Five per
+ * seven days caps the worst case at €1.09.
+ *
+ * A window rather than a daily reset is also closer to how people use it: a
+ * walk or a new shelf of plants is a burst, not one a day.
  */
 export const PLAN_QUOTAS: Record<Plan, number> = {
-  free: 3,
+  free: 5,
   pro: 50,
   premium: Number.MAX_SAFE_INTEGER,
 };
+
+/** Days an allowance window covers. */
+export const QUOTA_WINDOW_DAYS = 7;
+
+/**
+ * The free allowance for an account's first week.
+ *
+ * Someone who has just installed a plant app wants to identify everything on
+ * the windowsill, and that first sitting is when they decide whether it is
+ * worth paying for. The extra five cost €0.25, once, per install.
+ */
+export const FREE_FIRST_WEEK_QUOTA = 10;
 
 export interface UserRow {
   id: string;
   email: string | null;
   display_name: string;
   plan: Plan;
-  quota_used_today: number;
-  last_quota_reset: Date;
+  quota_used_in_window: number;
+  quota_window_start: Date;
   device_id: string | null;
   password_hash: string | null;
   created_at: Date;
 }
 
 const PUBLIC_COLUMNS = `
-  id, email, display_name, plan, quota_used_today,
-  last_quota_reset, device_id, created_at
+  id, email, display_name, plan, quota_used_in_window,
+  quota_window_start, device_id, created_at
 `;
 
 export async function findById(id: string): Promise<UserRow | null> {
@@ -128,11 +143,27 @@ export interface QuotaState {
   resetsAt: string;
 }
 
-/** Midnight tonight, which is when quota_used_today becomes stale. */
-function nextReset(): string {
-  const tomorrow = new Date();
-  tomorrow.setHours(24, 0, 0, 0);
-  return tomorrow.toISOString();
+const WINDOW_MS = QUOTA_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+/** When the window that started at `start` runs out. */
+function windowEnd(start: Date | string): Date {
+  return new Date(new Date(start).getTime() + WINDOW_MS);
+}
+
+/**
+ * What this account is allowed in a window.
+ *
+ * Paid plans get their plan's allowance. A free account gets the larger
+ * first-week allowance until it is a week old — derived from created_at, so
+ * there is no bonus counter to keep in step or to reset by reinstalling.
+ */
+export function limitFor(user: UserRow): number {
+  if (user.plan !== "free") {
+    return PLAN_QUOTAS[user.plan];
+  }
+
+  const age = Date.now() - new Date(user.created_at).getTime();
+  return age < WINDOW_MS ? FREE_FIRST_WEEK_QUOTA : PLAN_QUOTAS.free;
 }
 
 export async function getQuota(userId: string): Promise<QuotaState> {
@@ -142,19 +173,22 @@ export async function getQuota(userId: string): Promise<QuotaState> {
     throw ApiError.notFound("User not found");
   }
 
-  // The stored counter is only meaningful for today. Rather than run a reset
-  // job, treat a stale last_quota_reset as zero and let the next consume
-  // write the corrected value.
-  const isStale = new Date(user.last_quota_reset).toDateString() !== new Date().toDateString();
-  const used = isStale ? 0 : user.quota_used_today;
-  const limit = PLAN_QUOTAS[user.plan];
+  // The stored counter only means anything inside its window. Rather than run
+  // a reset job, treat a window that has run out as zero used and let the next
+  // consume write the corrected value.
+  const ends = windowEnd(user.quota_window_start);
+  const expired = ends.getTime() <= Date.now();
+  const used = expired ? 0 : user.quota_used_in_window;
+  const limit = limitFor(user);
 
   return {
     used,
     limit,
     remaining: Math.max(0, limit - used),
     plan: user.plan,
-    resetsAt: nextReset(),
+    // A window that has run out has no reset date yet: the next one starts
+    // when they next identify something. Say when that window would end.
+    resetsAt: (expired ? new Date(Date.now() + WINDOW_MS) : ends).toISOString(),
   };
 }
 
@@ -174,23 +208,28 @@ export async function consumeQuota(userId: string): Promise<QuotaState | null> {
     throw ApiError.notFound("User not found");
   }
 
-  const limit = PLAN_QUOTAS[user.plan];
+  const limit = limitFor(user);
 
-  const row = await queryOne<{ quota_used_today: number; plan: Plan }>(
+  const row = await queryOne<{
+    quota_used_in_window: number;
+    quota_window_start: Date;
+    plan: Plan;
+  }>(
     `UPDATE users
-        SET quota_used_today = CASE
-              WHEN last_quota_reset::date < CURRENT_DATE THEN 1
-              ELSE quota_used_today + 1
+        SET quota_used_in_window = CASE
+              WHEN quota_window_start <= CURRENT_TIMESTAMP - make_interval(days => $3::int) THEN 1
+              ELSE quota_used_in_window + 1
             END,
-            last_quota_reset = CASE
-              WHEN last_quota_reset::date < CURRENT_DATE THEN CURRENT_TIMESTAMP
-              ELSE last_quota_reset
+            quota_window_start = CASE
+              WHEN quota_window_start <= CURRENT_TIMESTAMP - make_interval(days => $3::int) THEN CURRENT_TIMESTAMP
+              ELSE quota_window_start
             END
       WHERE id = $1
         AND deleted_at IS NULL
-        AND (last_quota_reset::date < CURRENT_DATE OR quota_used_today < $2)
-      RETURNING quota_used_today, plan`,
-    [userId, limit]
+        AND (quota_window_start <= CURRENT_TIMESTAMP - make_interval(days => $3::int)
+             OR quota_used_in_window < $2)
+      RETURNING quota_used_in_window, quota_window_start, plan`,
+    [userId, limit, QUOTA_WINDOW_DAYS]
   );
 
   if (!row) {
@@ -198,11 +237,11 @@ export async function consumeQuota(userId: string): Promise<QuotaState | null> {
   }
 
   return {
-    used: row.quota_used_today,
+    used: row.quota_used_in_window,
     limit,
-    remaining: Math.max(0, limit - row.quota_used_today),
+    remaining: Math.max(0, limit - row.quota_used_in_window),
     plan: row.plan,
-    resetsAt: nextReset(),
+    resetsAt: windowEnd(row.quota_window_start).toISOString(),
   };
 }
 
@@ -210,7 +249,7 @@ export async function consumeQuota(userId: string): Promise<QuotaState | null> {
 export async function refundQuota(userId: string): Promise<void> {
   await query(
     `UPDATE users
-        SET quota_used_today = GREATEST(0, quota_used_today - 1)
+        SET quota_used_in_window = GREATEST(0, quota_used_in_window - 1)
       WHERE id = $1 AND deleted_at IS NULL`,
     [userId]
   );

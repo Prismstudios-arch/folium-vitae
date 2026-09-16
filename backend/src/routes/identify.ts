@@ -14,6 +14,7 @@ import { query, queryOne } from "../db";
 import * as Users from "../models/User";
 import { identify as callProvider, isProviderConfigured, IdentificationResult } from "../services/identifyProvider";
 import logger from "../utils/logger";
+import { describeDate } from "../utils/dates";
 
 export const identifyRoutes = Router();
 
@@ -106,10 +107,10 @@ identifyRoutes.post(
     const quota = await Users.getQuota(userId);
 
     if (quota.remaining <= 0) {
-      // The reset is at 00:00 UTC (CURRENT_DATE on the database), so say
-      // that. "Midnight" is an hour wrong for the UK half the year.
+      // Say when, not just no. The code stays DAILY_LIMIT so builds already
+      // installed keep recognising it; only the allowance became weekly.
       throw ApiError.tooManyRequests(
-        `You've used all ${quota.limit} of today's identifications. They reset at 00:00 UTC.`,
+        `You've used all ${quota.limit} of this week's identifications. You'll have more on ${describeDate(quota.resetsAt)}.`,
         "DAILY_LIMIT"
       );
     }

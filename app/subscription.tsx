@@ -180,18 +180,18 @@ export default function SubscriptionScreen() {
         >
           <Image source={require("../assets/brand-mark.png")} style={styles.heroMark} accessibilityIgnoresInvertColors />
           <Text style={styles.heroTitle}>Sorrel Premium</Text>
-          <Text style={styles.heroBody}>Everything Sorrel can do,{"\n"}with no daily limit.</Text>
+          <Text style={styles.heroBody}>Everything Sorrel can do,{"\n"}with nothing held back.</Text>
         </HeroCard>
 
         <View style={styles.sheet}>
           <View style={styles.benefits}>
-            <Benefit icon="infinity" color={Tiles.blue} title="Unlimited identifications" detail="No daily limit, ever" />
+            <Benefit icon="infinity" color={Tiles.blue} title="Unlimited identifications" detail="No weekly limit, ever" />
             <Benefit icon="stethoscope" color={Tiles.teal} title="Plant health checks" detail="Likely causes, and what to try first" last />
           </View>
 
           <Text style={styles.freeNote}>
             Free keeps working either way —{" "}
-            {freeLimit !== null ? `${freeLimit} identifications a day` : "a daily allowance of identifications"}, care
+            {freeLimit !== null ? `${freeLimit} identifications this week` : "a weekly allowance of identifications"}, care
             notes, your collection and reminders.
           </Text>
 

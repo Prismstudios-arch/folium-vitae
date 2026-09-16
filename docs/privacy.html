@@ -54,7 +54,7 @@
   <main>
     <a class="home" href="./">← Sorrel</a>
     <h1>Privacy</h1>
-    <p class="updated">Last updated 14 September 2026</p>
+    <p class="updated">Last updated 16 September 2026</p>
 
       <p>Sorrel is built so that we hold as little about you as possible. This page says exactly what we collect, why, and who else sees it. No lawyer-speak.</p>
       <div class="highlight">You do not need an account to use Sorrel. We do not sell your data, we do not run ads, and we do not track your location.</div>
@@ -62,12 +62,12 @@
       <h2>Photos you scan</h2>
       <p>When you identify a plant, the photo is sent to our server, which passes it to our identification provider and returns the answer.</p>
       <p>Before a photo leaves your phone we resize it and re-encode it, which removes the embedded metadata cameras attach — including the GPS coordinates of where it was taken. For houseplants that is usually your home, so we strip it rather than ask you to trust us with it.</p>
-      <p>We keep a fingerprint of each photo so that re-scanning the same plant returns the previous answer instantly, without costing you one of your daily scans.</p>
+      <p>We keep a fingerprint of each photo so that re-scanning the same plant returns the previous answer instantly, without using up one of your identifications.</p>
 
       <h2>What we store about you</h2>
       <ul>
-      <li>A random identifier for your install. It is generated on your device and is not tied to your phone's hardware, your Apple ID, or you.</li>
-      <li>How many scans you have used today, so the daily limit works and cannot be reset by reinstalling.</li>
+      <li>An identifier for your install. It is worked out on your device from the identifier iOS gives apps from the same developer, and what we receive is a one-way hash of it. It is not your Apple ID, not a hardware serial number, and cannot be used to follow you into anybody else's apps. It survives reinstalling, which is how the free allowance cannot be reset by deleting the app.</li>
+      <li>How many identifications you have used in the current seven-day window, so the free allowance works and cannot be reset by reinstalling.</li>
       <li>Your email address and an encrypted form of your password — only if you choose to create an account so your collection survives a new phone.</li>
       </ul>
 

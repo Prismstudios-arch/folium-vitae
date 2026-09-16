@@ -211,10 +211,10 @@ export default function ResultScreen() {
           // Premium is genuinely relevant.
           <View style={styles.card}>
             <IconTile icon="hourglass" color={Tiles.amber} size={52} />
-            <Text style={styles.cardTitle}>That's today's identifications</Text>
+            <Text style={styles.cardTitle}>That's this week's identifications</Text>
             <Text style={styles.cardBody}>{error.message}</Text>
             <Text style={styles.cardBody}>
-              Premium removes the daily limit. Your collection, care notes and reminders keep working either way.
+              Premium removes the limit. Your collection, care notes and reminders keep working either way.
             </Text>
             <Button label="See Premium" icon="crown.fill" onPress={() => router.push("/subscription")} style={styles.cardButton} />
             <Button label="Back" variant="tertiary" onPress={goBack} style={styles.cardButtonTight} />
