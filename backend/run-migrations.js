@@ -10,7 +10,11 @@ const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
 
-require("dotenv").config();
+// The .env sits next to this script, not in whatever directory it was run
+// from. Without the explicit path, `node backend/run-migrations.js` from the
+// project root found no .env at all and then reported DATABASE_URL as unset —
+// while claiming it had looked in backend/.env.
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 async function run() {
   const connectionString = process.env.DATABASE_URL;
