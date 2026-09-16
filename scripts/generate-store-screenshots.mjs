@@ -172,10 +172,10 @@ function slideHtml({ title, body, theme }, screen, sprig) {
      untouched: this only covers the island's own strip. */
   .island {
     position: absolute;
-    left: 19.9%;
-    top: 1.3%;
-    width: 38.1%;
-    height: 2.9%;
+    left: 18.5%;
+    top: 1%;
+    width: 41%;
+    height: 3.8%;
     border-radius: 999px;
     background: #000000;
   }
