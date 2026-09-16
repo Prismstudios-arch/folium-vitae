@@ -76,7 +76,7 @@ export const PRIVACY_POLICY: LegalDocument = {
         },
         {
           type: "bullet",
-          text: "Your email address and an encrypted form of your password — only if you choose to create an account so your collection survives a new phone.",
+          text: "No email address and no password. Sorrel has no sign-up: the only account is the anonymous one tied to the identifier above. That is also why your collection lives on this phone rather than on our servers — export it from Settings before you delete the app, because deleting the app deletes it.",
         },
       ],
     },
