@@ -62,9 +62,18 @@ async function secureSet(key: string, value: string): Promise<void> {
  */
 export async function getDeviceId(): Promise<string> {
   // Installs that predate the keychain keep the id they already have, so
-  // nobody's collection or subscription is orphaned by this change.
+  // nobody's collection or subscription is orphaned by this change — and it
+  // is copied into the keychain on the way past. Left in AsyncStorage alone
+  // it would be thrown away by the next reinstall, handing that phone a new
+  // identity and a fresh allowance, which is the one thing the keychain is
+  // here to prevent.
   const legacy = await AsyncStorage.getItem(LEGACY_KEY);
-  if (legacy) return legacy;
+  if (legacy) {
+    if (!(await secureGet(DEVICE_KEY))) {
+      await secureSet(DEVICE_KEY, legacy);
+    }
+    return legacy;
+  }
 
   const stored = await secureGet(DEVICE_KEY);
   if (stored) return stored;
