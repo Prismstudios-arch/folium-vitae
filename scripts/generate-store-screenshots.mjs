@@ -4,10 +4,15 @@
  *
  *   node scripts/generate-store-screenshots.mjs
  *
- * Put screenshots taken on an iPhone in store/raw/, named as in
- * store/captions.json (01.png, 02.png…). Each becomes store/out/<name> at
- * 1290 × 2796 — a size App Store Connect accepts for the 6.9" iPhone slot,
- * which it scales down for smaller phones.
+ * Put the screenshots taken on an iPhone in store/raw/. captions.json says
+ * which one each slide is made from and what it becomes: store/out/01.png
+ * and so on, at 1290 × 2796, the size App Store Connect wants for the 6.9"
+ * iPhone slot.
+ *
+ * STORE_WIDTH, STORE_HEIGHT and STORE_OUT render the same layout at another
+ * slot's size — the 6.5" slot, for instance:
+ *
+ *   STORE_WIDTH=1284 STORE_HEIGHT=2778 STORE_OUT=store/out-65 node scripts/…
  *
  * The screens are never mocked up: Apple expects store screenshots to show
  * the app as it really is, and so do the people deciding whether to install.
@@ -172,10 +177,10 @@ function slideHtml({ title, body, theme }, screen, sprig) {
      untouched: this only covers the island's own strip. */
   .island {
     position: absolute;
-    left: 18.5%;
+    left: 19.6%;
     top: 1%;
-    width: 41%;
-    height: 3.8%;
+    width: 39.4%;
+    height: 4.6%;
     border-radius: 999px;
     background: #000000;
   }
