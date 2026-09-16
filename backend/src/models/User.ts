@@ -18,29 +18,24 @@ export type Plan = "free" | "pro" | "premium";
  * Each identification costs €0.05 at Kindwise's entry rate, and an annual
  * subscription nets about $2.12 a month after Apple's 15% cut. The free tier
  * started at 7 a day and then 3 a day — €4.55 a month for someone who used
- * every one, which takes more than two annual subscribers to cover. Five per
- * seven days caps the worst case at €1.09.
+ * every one, which takes more than two annual subscribers to cover. Six per
+ * seven days caps the worst case at €1.30.
  *
  * A window rather than a daily reset is also closer to how people use it: a
  * walk or a new shelf of plants is a burst, not one a day.
+ *
+ * There is deliberately no larger first-week allowance. One existed briefly,
+ * on the argument that a new user wants to scan the whole windowsill, but it
+ * meant the app opened by offering a number it would later take away.
  */
 export const PLAN_QUOTAS: Record<Plan, number> = {
-  free: 5,
+  free: 6,
   pro: 50,
   premium: Number.MAX_SAFE_INTEGER,
 };
 
 /** Days an allowance window covers. */
 export const QUOTA_WINDOW_DAYS = 7;
-
-/**
- * The free allowance for an account's first week.
- *
- * Someone who has just installed a plant app wants to identify everything on
- * the windowsill, and that first sitting is when they decide whether it is
- * worth paying for. The extra five cost €0.25, once, per install.
- */
-export const FREE_FIRST_WEEK_QUOTA = 10;
 
 export interface UserRow {
   id: string;
@@ -150,20 +145,9 @@ function windowEnd(start: Date | string): Date {
   return new Date(new Date(start).getTime() + WINDOW_MS);
 }
 
-/**
- * What this account is allowed in a window.
- *
- * Paid plans get their plan's allowance. A free account gets the larger
- * first-week allowance until it is a week old — derived from created_at, so
- * there is no bonus counter to keep in step or to reset by reinstalling.
- */
+/** What this account is allowed in a window. */
 export function limitFor(user: UserRow): number {
-  if (user.plan !== "free") {
-    return PLAN_QUOTAS[user.plan];
-  }
-
-  const age = Date.now() - new Date(user.created_at).getTime();
-  return age < WINDOW_MS ? FREE_FIRST_WEEK_QUOTA : PLAN_QUOTAS.free;
+  return PLAN_QUOTAS[user.plan];
 }
 
 export async function getQuota(userId: string): Promise<QuotaState> {

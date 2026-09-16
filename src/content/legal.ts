@@ -202,7 +202,7 @@ export const TERMS_OF_USE: LegalDocument = {
       blocks: [
         {
           type: "bullet",
-          text: "The free tier includes a set number of identifications every seven days, and more in your first week. The window starts when you make your first identification and the app shows how many you have left and when the next ones arrive.",
+          text: "The free tier includes a set number of identifications every seven days. The window starts when you make your first identification, and the app shows how many you have left and when the next ones arrive.",
         },
         {
           type: "bullet",
