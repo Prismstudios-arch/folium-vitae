@@ -269,7 +269,7 @@ export default function WaterLogScreen() {
           multiline
           maxLength={280}
           returnKeyType="done"
-          blurOnSubmit
+          submitBehavior="blurAndSubmit"
         />
 
         <Button label="Log watering" icon="drop.fill" onPress={handleAddLog} loading={saving} disabled={saving} />

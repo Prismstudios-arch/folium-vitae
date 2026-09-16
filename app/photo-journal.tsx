@@ -220,6 +220,13 @@ export default function PhotoJournalScreen() {
                 key={item.id}
                 style={({ pressed }) => [styles.photoCard, pressed && styles.pressed]}
                 onLongPress={() => handleDeletePhoto(item.id)}
+                accessibilityRole="image"
+                accessibilityLabel={[
+                  `Photo from ${item.dateTaken.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}`,
+                  item.caption,
+                ]
+                  .filter(Boolean)
+                  .join(". ")}
                 accessibilityHint="Press and hold to delete"
               >
                 {unavailable.has(item.id) ? (
