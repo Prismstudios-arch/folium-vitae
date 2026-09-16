@@ -28,8 +28,20 @@ const RAW = process.env.STORE_RAW ?? path.join(STORE, "raw");
 const OUT = process.env.STORE_OUT ?? path.join(STORE, "out");
 const CHROME = process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 
-const WIDTH = 1290;
-const HEIGHT = 2796;
+// App Store Connect takes a different pixel size per device slot. The layout
+// is designed once at 6.9" and scaled to whatever is asked for, so every set
+// is identical apart from its size.
+const DESIGN_WIDTH = 1290;
+const DESIGN_HEIGHT = 2796;
+
+const WIDTH = Number(process.env.STORE_WIDTH ?? DESIGN_WIDTH);
+const HEIGHT = Number(process.env.STORE_HEIGHT ?? DESIGN_HEIGHT);
+
+const SCALE = Math.min(WIDTH / DESIGN_WIDTH, HEIGHT / DESIGN_HEIGHT);
+// Centred, so a slot with slightly different proportions gutters evenly
+// rather than hanging off one edge.
+const OFFSET_X = (WIDTH - DESIGN_WIDTH * SCALE) / 2;
+const OFFSET_Y = (HEIGHT - DESIGN_HEIGHT * SCALE) / 2;
 
 const captions = JSON.parse(fs.readFileSync(path.join(STORE, "captions.json"), "utf8"));
 
@@ -66,12 +78,20 @@ function slideHtml({ title, body, theme }, screen, sprig) {
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: ${WIDTH}px; height: ${HEIGHT}px; overflow: hidden; }
-  body { font-family: "Plus Jakarta Sans", "Segoe UI", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: "Plus Jakarta Sans", "Segoe UI", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: ${light ? "#F6FAF7" : "#062A1E"};
+  }
 
   .slide {
-    position: relative;
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: ${DESIGN_WIDTH}px;
+    height: ${DESIGN_HEIGHT}px;
+    transform: translate(${OFFSET_X}px, ${OFFSET_Y}px) scale(${SCALE});
+    transform-origin: top left;
     overflow: hidden;
     background:
       radial-gradient(1100px 900px at 88% 6%, ${light ? "rgba(143, 216, 111, 0.35)" : "rgba(143, 216, 111, 0.22)"}, transparent 62%),
@@ -130,10 +150,34 @@ function slideHtml({ title, body, theme }, screen, sprig) {
       0 90px 180px ${light ? "rgba(6, 42, 30, 0.28)" : "rgba(0, 0, 0, 0.5)"};
   }
 
+  /* Wraps the screenshot with no padding of its own, so the island mask
+     below can be placed as a percentage of the screen itself rather than of
+     the frame around it. */
+  .screenwrap {
+    position: relative;
+    line-height: 0;
+  }
+
   .screen {
     display: block;
     width: 100%;
     border-radius: 134px;
+  }
+
+  /* The Dynamic Island, blacked out.
+     A phone screenshot catches whatever the island was showing at the time —
+     a call, a Live Activity, and in our case the photo of whoever was on the
+     other end. None of that is the app, and a face does not belong on a
+     public store page. The screenshots are dark, so the app itself is
+     untouched: this only covers the island's own strip. */
+  .island {
+    position: absolute;
+    left: 19.9%;
+    top: 1.3%;
+    width: 38.1%;
+    height: 2.9%;
+    border-radius: 999px;
+    background: #000000;
   }
 </style>
 </head>
@@ -144,7 +188,7 @@ function slideHtml({ title, body, theme }, screen, sprig) {
       <h1>${formatTitle(title)}</h1>
       <p>${escapeHtml(body)}</p>
     </div>
-    <div class="phone"><img class="screen" src="${screen}" alt=""></div>
+    <div class="phone"><div class="screenwrap"><img class="screen" src="${screen}" alt=""><div class="island"></div></div></div>
   </div>
 </body>
 </html>`;
@@ -159,10 +203,12 @@ async function main() {
 
   try {
     for (const caption of captions) {
-      const rawFile = path.join(RAW, caption.file);
+      // The phone screenshot keeps the name the phone gave it; the caption
+      // says which output it becomes.
+      const rawFile = path.join(RAW, caption.source ?? caption.file);
 
       if (!fs.existsSync(rawFile)) {
-        console.log(`  skip  ${caption.file} — no screenshot in store/raw (${caption.shot})`);
+        console.log(`  skip  ${caption.file} — ${path.basename(rawFile)} is not in store/raw (${caption.shot})`);
         continue;
       }
 
